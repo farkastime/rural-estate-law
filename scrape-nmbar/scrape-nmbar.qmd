@@ -1,0 +1,16 @@
+```{python}
+import requests
+from bs4 import BeautifulSoup
+```
+
+```{python}
+url = "https://www.sbnm.org/For-Public/I-Need-a-Lawyer/Online-Bar-Directory"
+form_data = {
+    'PRACTICEAREALIST_input': 'ESTAT',
+}
+```
+
+
+```{python}
+response = requests.post(url, data=form_data)
+```
