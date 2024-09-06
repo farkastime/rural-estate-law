@@ -1,16 +1,50 @@
 ```{python}
 import requests
 from bs4 import BeautifulSoup
+import lxml
 ```
 
 ```{python}
 url = "https://www.sbnm.org/For-Public/I-Need-a-Lawyer/Online-Bar-Directory"
 form_data = {
-    'PRACTICEAREALIST_input': 'ESTAT',
+    'PRACTICEAREALIST_input': 'ESTA',
 }
 ```
 
 
 ```{python}
 response = requests.post(url, data=form_data)
+```
+
+
+```{python}
+# Check if the request was successful
+if response.status_code == 200:
+    # Step 3: Parse the HTML response with BeautifulSoup
+    soup = BeautifulSoup(response.text, 'lxml')
+
+    # Step 4: Locate the table in the parsed HTML (modify the selector as needed)
+    table = soup.find('table', {'id': 'myTable'})  # Replace 'table_id' with the actual table id or use another selector
+
+    # Step 5: Extract table headers
+    headers = []
+    for th in table.find_all('th'):
+        headers.append(th.text.strip())
+
+    # Step 6: Extract table rows
+    rows = []
+    for tr in table.find_all('tr'):
+        cells = tr.find_all(['td', 'th'])
+        row = [cell.text.strip() for cell in cells]
+        rows.append(row)
+
+    # Step 7: Display the scraped table data
+    print("Headers:")
+    print(headers)
+    print("\nRows:")
+    for row in rows:
+        print(row)
+
+else:
+    print(f"Failed to submit the form. Status code: {response.status_code}")
 ```
