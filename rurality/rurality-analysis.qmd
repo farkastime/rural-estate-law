@@ -4,8 +4,25 @@
 #| label: load libraries
 library(tidyverse)
 library(haven)
+library(janitor)
 ```
 # Basic Data Manipulation
+
+```{r}
+#| label: load the tracker file
+trd_raw <- read_sas('data/hrs/xwave-tracker.sas7bdat') %>%
+    select(HHID, PN, GENDER, HISPANIC, RACE, wgt20r=SWGTR) %>%
+    clean_names("all_caps") %>%
+    filter(WGT20 > 0)
+```
+```{r}
+#| label: load the wills data
+wd <- read_sas('data/h20sas/h20t_r.sas7bdat') %>%
+    select(hhid=HHID, pn=PN, will_type=RT001) %>%
+    filter(will_type %in% 1:5) %>%
+    mutate(will_ind=ifelse(will_type %in% 1:3, 'Yes', 'No')) %>%
+    drop_na()
+```
 ```{r}
 #| label: load Cross-Wave Census Region/Division and Mobility data
 rd <- read_sas('data/HRSXRegion2020v9Final/hrsxregion20.sas7bdat') %>%
@@ -17,12 +34,9 @@ rd <- read_sas('data/HRSXRegion2020v9Final/hrsxregion20.sas7bdat') %>%
 ```
 
 ```{r}
-#| label: load the wills data
-wd <- read_sas('data/h20sas/h20t_r.sas7bdat') %>%
-    select(hhid=HHID, pn=PN, will_type=RT001) %>%
-    filter(will_type %in% 1:5) %>%
-    mutate(will_ind=ifelse(will_type %in% 1:3, 'Yes', 'No')) %>%
-    drop_na()
+#| label: demographics
+dm <- read_sas('data/h20sas/h20b_r.sas7bdat') %>%
+    select(hhid=HHID, pn=PN, race=RB091M)
 ```
 
 ```{r}
