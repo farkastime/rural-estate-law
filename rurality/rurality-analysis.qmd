@@ -78,14 +78,12 @@ dd %>%
 #| label: plot will ind by age
 dd %>%
     group_by(AGE, WILL_IND) %>%
-    summarize(WGTSUM=sum(WGT20R), N=n()) %>%
-    # filter(WILL_IND == 'Yes') %>%
-    view()
-    # group_by(AGE) %>%
-    # mutate(prop=WGT20R/sum(WGT20R))  %>%
-    # filter(WILL_IND == 'Yes') %>%
-    # ggplot(aes(x=AGE, y=prop)) + 
-    # geom_point()
+    summarize(WGTSUM=sum(WGT20R)) %>% 
+    group_by(AGE) %>%
+    mutate(prop=WGTSUM/sum(WGTSUM)) %>% 
+    filter(WILL_IND == 'Y') %>% 
+    ggplot(aes(x=AGE, y=prop)) + 
+    geom_point()
 ```
 # Simple Analysis
 
@@ -101,8 +99,9 @@ summary(m0)
 ```{r}
 #| label: weighted logistic regression of will type on rurality
 m1 <- glm(
-    WILL_IND ~ AGE + RURALITY + HISP + RACE, data=dd, family=binomial, 
-    weight=WGTMOD, subset=AGE <= 90
+    WILL_IND ~ AGE + RURALITY, 
+    data=dd, family=binomial, 
+    weight=WGTMOD
 ) 
 summary(m1)
 ```
