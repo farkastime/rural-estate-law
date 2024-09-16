@@ -35,7 +35,7 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
     clean_names("all_caps") %>%
     filter(WILL_TYPE %in% 1:5) %>%
     mutate(WILL_IND=ifelse(WILL_TYPE %in% 1:3, 'Y', 'N')) %>%
-    mutate(across(WILL_IND, as_factor)) %>%
+    mutate(across(WILL_IND, ~fct_relevel(as_factor(.x), "N", "Y"))) %>%
     drop_na()
 ```
 ```{r}
@@ -53,7 +53,8 @@ rur <- read_sas('data/hrs/xwave-mobility.sas7bdat') %>%
 #| label: merge will and rurality data
 dd <- trk %>%
     inner_join(wil, by=c('HHID', 'PN')) %>%
-    inner_join(rur, by=c('HHID', 'PN')) 
+    inner_join(rur, by=c('HHID', 'PN')) %>%
+    mutate(WGTMOD=(WGT20R / sum(WGT20R)) * n())
 ```
 
 # Simple Visualization
@@ -61,13 +62,14 @@ dd <- trk %>%
 ```{r}
 #| label: plot will ind by rurality
 dd %>%
-    group_by(RURALITY, WILL_IND, REGION) %>%
-    summarize(across(WGT20R, sum)) %>%
-    ggplot(aes(x=RURALITY, y=WGT20R, fill=WILL_IND)) + 
+    # group_by(RURALITY, WILL_IND, REGION) %>%
+    group_by(RURALITY, WILL_IND) %>%
+    summarize(WGTSUM=sum(WGT20R)) %>%
+    ggplot(aes(x=RURALITY, y=WGTSUM, fill=WILL_IND)) + 
     geom_bar(
         stat='identity', 
-        position=position_fill(reverse=TRUE), 
-        # position = 'fill'
+        # position=position_fill(reverse=TRUE), 
+        position = 'fill'
     ) #+
     # facet_wrap(~REGION)
 ```
@@ -76,12 +78,14 @@ dd %>%
 #| label: plot will ind by age
 dd %>%
     group_by(AGE, WILL_IND) %>%
-    summarize(across(WGT20R, sum)) %>%
-    group_by(AGE) %>%
-    mutate(prop=WGT20R/sum(WGT20R))  %>%
-    filter(WILL_IND == 'Yes') %>%
-    ggplot(aes(x=AGE, y=prop)) + 
-    geom_point()
+    summarize(WGTSUM=sum(WGT20R), N=n()) %>%
+    # filter(WILL_IND == 'Yes') %>%
+    view()
+    # group_by(AGE) %>%
+    # mutate(prop=WGT20R/sum(WGT20R))  %>%
+    # filter(WILL_IND == 'Yes') %>%
+    # ggplot(aes(x=AGE, y=prop)) + 
+    # geom_point()
 ```
 # Simple Analysis
 
@@ -89,7 +93,7 @@ dd %>%
 #| label: weighted logistic regression of will type on rurality
 m0 <- glm(
     WILL_IND ~ RURALITY, data=dd, family=binomial, 
-    weights=WGT20R
+    weights=WGTMOD
 ) 
 summary(m0)
 ```
@@ -97,8 +101,8 @@ summary(m0)
 ```{r}
 #| label: weighted logistic regression of will type on rurality
 m1 <- glm(
-    WILL_IND ~ RURALITY + AGE + HISP + RACE, data=dd, family=binomial, 
-    # weights=WGT20R
+    WILL_IND ~ AGE + RURALITY + HISP + RACE, data=dd, family=binomial, 
+    weight=WGTMOD, subset=AGE <= 90
 ) 
 summary(m1)
 ```
