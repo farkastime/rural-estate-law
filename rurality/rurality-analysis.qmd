@@ -11,9 +11,22 @@ library(janitor)
 ```{r}
 #| label: load the Cross-Wave Tracker File 
 trk <- read_sas('data/hrs/xwave-tracker.sas7bdat') %>%
-    select(HHID, PN, GENDER, HISPANIC, RACE, wgt20r=SWGTR) %>%
+    select(HHID, PN, GENDER, HISP = HISPANIC, RACE, wgt20r=SWGTR, age=RAGE) %>%
     clean_names("all_caps") %>%
-    filter(WGT20R > 0)
+    filter(
+        GENDER %in% 1:2, 
+        HISP %in% 1:5, 
+        RACE %in% 1:7, 
+        WGT20R > 0, 
+        AGE != 999 # filter out individuals not core sampled in 2020
+    ) %>%
+    mutate(
+        across(GENDER, ~recode(.x, '1' = 'M', '2' = 'F')), 
+        across(HISP, ~recode(.x, '1' = 'Y', '2' = 'Y', '3' = 'Y', '5' = 'N')), 
+        across(RACE, ~recode(.x, '1' = 'White', '2' = 'Black', '7' = 'Other')), 
+        across(c(GENDER, HISP, RACE), as_factor), 
+        across(c(WGT20R, AGE), as.integer)
+    ) 
 ```
 ```{r}
 #| label: load the Wills and Life Insurance Data
@@ -21,7 +34,8 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
     select(HHID, PN, will_type=RT001) %>%
     clean_names("all_caps") %>%
     filter(WILL_TYPE %in% 1:5) %>%
-    mutate(WILL_IND=ifelse(WILL_TYPE %in% 1:3, 'Yes', 'No')) %>%
+    mutate(WILL_IND=ifelse(WILL_TYPE %in% 1:3, 'Y', 'N')) %>%
+    mutate(across(WILL_IND, as_factor)) %>%
     drop_na()
 ```
 ```{r}
@@ -30,7 +44,7 @@ rur <- read_sas('data/hrs/xwave-mobility.sas7bdat') %>%
     select(HHID, PN, region=REGION20, rurality=BEALE2023_20) %>% # only the 2020 survey
     clean_names("all_caps") %>%
     filter(RURALITY %in% 1:3) %>%
-    mutate(across(RURALITY, as_factor)) %>%
+    mutate(across(c(RURALITY, REGION), as_factor)) %>%
     mutate(across(RURALITY, ~recode(.x, '1'='Urban', '2'='Suburban', '3'='Rural'))) %>%
     drop_na() 
 ```
@@ -45,11 +59,46 @@ dd <- trk %>%
 # Simple Visualization
 
 ```{r}
-#| label: plot will type by rurality
+#| label: plot will ind by rurality
 dd %>%
     group_by(RURALITY, WILL_IND, REGION) %>%
     summarize(across(WGT20R, sum)) %>%
     ggplot(aes(x=RURALITY, y=WGT20R, fill=WILL_IND)) + 
-    geom_bar(stat='identity', position='fill') +
-    facet_wrap(~REGION)
+    geom_bar(
+        stat='identity', 
+        position=position_fill(reverse=TRUE), 
+        # position = 'fill'
+    ) #+
+    # facet_wrap(~REGION)
+```
+
+```{r}
+#| label: plot will ind by age
+dd %>%
+    group_by(AGE, WILL_IND) %>%
+    summarize(across(WGT20R, sum)) %>%
+    group_by(AGE) %>%
+    mutate(prop=WGT20R/sum(WGT20R))  %>%
+    filter(WILL_IND == 'Yes') %>%
+    ggplot(aes(x=AGE, y=prop)) + 
+    geom_point()
+```
+# Simple Analysis
+
+```{r}
+#| label: weighted logistic regression of will type on rurality
+m0 <- glm(
+    WILL_IND ~ RURALITY, data=dd, family=binomial, 
+    weights=WGT20R
+) 
+summary(m0)
+```
+
+```{r}
+#| label: weighted logistic regression of will type on rurality
+m1 <- glm(
+    WILL_IND ~ RURALITY + AGE + HISP + RACE, data=dd, family=binomial, 
+    # weights=WGT20R
+) 
+summary(m1)
 ```
