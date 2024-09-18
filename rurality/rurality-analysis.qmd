@@ -28,6 +28,11 @@ trk <- read_sas('data/hrs/xwave-tracker.sas7bdat') %>%
         across(c(WGT20R, AGE), as.integer)
     ) 
 ```
+
+```{r}
+#| label: load fat file
+fat <- read_sas('data/hrs/rand-fat-2020.sas7bdat')
+```
 ```{r}
 #| label: load the Wills and Life Insurance Data
 wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
