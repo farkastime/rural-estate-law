@@ -1,0 +1,165 @@
+---
+title: "HRS from Scratch"
+format: html
+editor: visual
+---
+
+## Hypothesis: Older Americans in rural areas are less likely to have a will or trust in place (controlling for confounding variables)
+
+Observation level: R (respondent)
+
+# Variables needed:
+
+## Urbanicity/Rurality Of Residence
+
+File: XWave Mobility File - Crosswalk of how coded from USDA Rural/Urban Continuum codes is in the Mob. file codebook.
+
+Field: BEALE2023_20
+
+File: RAND 2020 Longitudinal - taken from Cross Wave Mobility File. Uses closest Beale year for each wave of data.
+
+Variable name: RwURBUR (w= wave; 2020 w=15); SwURBUR is for spouse
+
+### Values
+
+1: Urban (N = ?)
+
+2: Suburban
+
+3: Rural (Exurban)
+
+9: No Match (?)
+
+Blank: Not interviewed (Why not?)
+
+Long. Values
+
+1: Urban
+
+2: Suburban
+
+3: Ex-urban
+
+.N No match (?)
+
+.M other missing
+
+### Transformation Strategy
+
+-   9 (No Match) -\> NA (remove)
+
+-   Blank –\> NA (remove)
+
+-   Option 1: Leave 1, 2, 3 as categorical (easy, reasonable)
+
+-   Option 2: Lump 1+2 vs 3
+
+-   Option 3: Lump 1 vs 2 + 3
+
+-   Option 4: Create ordinal variable (best, but slightly complex. research)
+
+Recode as names (1 -\> "urban," 2-\> "suburban," 3 -\> "rural")
+
+Categorical
+
+Keep all three categories for now (assuming I can combine then with code as a I analyze if I want to look at that, right?)
+
+sent email asking about what "no match" is - numbers are low in any case - 1 missing, 61 no match, over 3k for others. Probably can drop.
+
+### Questions / Research / To Do
+
+...
+
+## Will/trust?
+
+-   \- FAT, RT001
+
+-   Race - Tracker, RACE
+
+-   Total household wealth - ?
+
+-   Age - Tracker, RAGE
+
+-   Health/health event - Fat, RC001
+
+Change in Health (current health score - prev health score) - RAND long. RwSHLTC (w=wave, 15 = 2020)
+
+RwSHLTCF - that tells how long age prev interview was used to determine change.
+
+Strategy
+
+Cat type: Categorical (-4 to 0 == hlth_no_decline; 0 to 4 == "hlth_decline"
+
+Low score is positive health, so more positive score means more decline in health
+
+Drop missing (.M, n=29); no previous wave (.P, n=172)
+
+-   Gender - Tracker, GENDER
+
+    -   RAND Long File, RAGENDER (respondent); SwGENDER (gender of spouse)
+
+    -   Strategy
+
+    -   R: Categorical. Rename "1 == male, 2 == female"
+
+    -   S: Categorical. Rename "1 == male, 2 == female, .U = unmarried"
+
+        -   drop .V (spouse did not respond, n=256 for wave 15)
+
+-   **Education** - Tracker, DEGREE
+
+    Rand Long. File - RAEDYEARS - Min 0, Max 17 (years of education)
+
+    -   Strategy: Continuous numerical, drop missing (n=133)
+
+    Rand Long. File - RAEDEGRM (Highest degree)
+
+    -   Strategy: Categorical (or ordinal?) (rename 0==no_degree, 1, 2, or 3 == HS_or_GED, 4 or 5 == AA_or_BA, 6 or 7 == MA_above
+
+-   Homeownership - Fat, RH004
+
+-   Business ownership
+
+    RAND Long. File HwABSNS (net value of business) - there is an accompanying flag variable (HwAFBSNS) that seems to account for whether there was imputation (if value of "1" in this variable, no imputation was required). I don't really understand what the rest of the values are doing for this variable.
+
+    -   Strategy: Keep as continuous (min is 0 and max 20,000,000 for 2015 wave)
+
+-   Census region – mobility, REGION20
+
+    RAND Long File - RwCENREG = Respondent census region by wave, SnwCENREG - spouse(number) census region by wave
+
+    RAND Long File - RwCENDIV = Respondent census division by wave, SnwCENDIV - spouse(number) census division by wave
+
+# Compilation Strategy
+
+### Data Sets
+
+1.  Cross-Wave Tracker File
+
+2.  Rand Fat File (or Longitudinal File?)
+
+3.  Cross-Wave Mobility File
+
+### High-Level Workflow
+
+1.  Prepare each dataset: use transformation strategy (above) to update / modify each target variable.
+    1.  Load the dataset from file (`haven::read_sas`)
+    2.  Select target variables (+ respondent identifiers)
+    3.  Transform raw values to desired format:
+        1.  grouping (`ifelse`, `recode`)
+        2.  type conversion (numeric, factor, boolean, etc.) — `as_factor`, `as.numeric` ...
+        3.  NA (missing values) - `ifelse`
+        4.  value recoding (1 -\> "Urban", 2 -\> "Suburban", etc.) - `recode`
+2.  Merge datasets on unique respondent identifier. `inner_join`
+3.  Perform visualization / analysis. `ggplot`, `glm`
+
+\*will need to merge FAT/tracker
+
+```{r}
+#merge Fat and Tracker
+
+#for each variable of interest, think about how to use/code different levels of the variable/who to exclude
+
+
+HRS_2020_Core <- read_sas('/Users/sophierane/Desktop/HRS Data/2020/h20f1a_SAS.zip RAND 2020 Fat/h20f1a.sas7bdat')
+```

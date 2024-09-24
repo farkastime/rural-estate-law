@@ -1,0 +1,42 @@
+# Prerequisites
+```{r}
+#| label: load libraries
+library(tidyverse)
+library(haven)
+library(janitor)
+lirbrary(survey)
+```
+```{r}
+#| label: load the RAND Longitudinal File
+rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds')
+```
+
+```{r}
+rlf_dd <- rlf %>%
+    select(
+        HHIDPN, STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
+        AGE = R15AGEM_E, GENDER = S15GENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC = RAEDYRS,
+        REGION = R15CENREG, RURALITY = R15URBRUR,  
+        HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB
+    ) %>%
+    drop_na()
+```
+
+```{r}
+#| label: load the Wills data
+wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
+    select(HHID, RSUBHH, PN, WILL_TYPE=RT001) %>%
+    filter(WILL_TYPE %in% 1:5) %>%
+    mutate(
+        HHIDPN = as.numeric(paste0(HHID, PN)),
+        WILL_IND=ifelse(WILL_TYPE %in% 1:3, 'Y', 'N'),
+        across(WILL_IND, ~fct_relevel(as_factor(.x), 'N', 'Y'))
+        ) %>%
+    drop_na()
+```
+
+```{r}
+#| label: combine the RAND Longitudinal File with the Wills data
+dd <- rlf_dd %>%
+    left_join(wil, by='HHIDPN') 
+```
