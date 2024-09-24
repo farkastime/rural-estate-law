@@ -3,8 +3,7 @@
 #| label: load libraries
 library(tidyverse)
 library(haven)
-library(janitor)
-lirbrary(survey)
+library(survey)
 ```
 ```{r}
 #| label: load the RAND Longitudinal File
