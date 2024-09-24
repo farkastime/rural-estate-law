@@ -16,7 +16,7 @@ rlf_dd <- rlf %>%
         HHIDPN, STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
         AGE = R15AGEM_E, GENDER = S15GENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC = RAEDYRS,
         REGION = R15CENREG, RURALITY = R15URBRUR,  
-        HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB
+        HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB, OWN_HOME = H15ARLES,
     ) %>%
     drop_na()
 ```
@@ -32,6 +32,24 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
         across(WILL_IND, ~fct_relevel(as_factor(.x), 'N', 'Y'))
         ) %>%
     drop_na()
+```
+
+```{r}
+#| label: load the home ownership data
+hom <- read_sas('data/hrs/core-2020/h20h_h.sas7bdat') %>%
+    select(
+        HHID, RSUBHH, own_home=RH004,
+    ) %>% # only the 2020 survey
+    mutate(OWNHOME_IND = ifelse(OWN_HOME == '1', 'Y', 'N')) %>%
+    mutate(
+        across(OWNHOME_IND, ~fct_relevel(as_factor(.x), "N", "Y")),
+        # across(HOME_VAL, as.numeric)
+        ) %>%
+    filter(
+        OWN_HOME %in% 1:7, # excluding don't know, refused, and missing
+        # between(HOME_VAL, 0, 3000000000) 
+    ) %>%
+    drop_na() 
 ```
 
 ```{r}
