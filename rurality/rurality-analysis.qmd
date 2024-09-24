@@ -11,7 +11,7 @@ library(janitor)
 ```{r}
 #| label: load the Cross-Wave Tracker File 
 trk <- read_sas('data/hrs/xwave-tracker.sas7bdat') %>%
-    select(HHID, PN, GENDER, HISP = HISPANIC, RACE, wgt20r=SWGTR, age=RAGE) %>%
+    select(HHID, PN, GENDER, HISP = HISPANIC, RACE, wgt20r=SWGTR, age=RAGE, SECU, STRATUM) %>%
     clean_names("all_caps") %>%
     filter(
         GENDER %in% 1:2, 
@@ -46,7 +46,7 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
 ```{r}
 #| label: load Cross-Wave Census Region/Division and Mobility data
 rur <- read_sas('data/hrs/xwave-mobility.sas7bdat') %>%
-    select(HHID, RSUBHH, PN, region=REGION20, rurality=BEALE2023_20) %>% # only the 2020 survey
+    select(HHID, PN, region=REGION20, rurality=BEALE2023_20) %>% # only the 2020 survey
     clean_names("all_caps") %>%
     filter(RURALITY %in% 1:3) %>%
     mutate(across(c(RURALITY, REGION), as_factor)) %>%
@@ -79,7 +79,10 @@ dd <- trk %>%
     inner_join(wil, by=c('HHID', 'PN')) %>%
     inner_join(rur, by=c('HHID', 'PN')) %>%
     inner_join(hom, by=c('HHID', 'RSUBHH')) %>%
-    mutate(WGTMOD=(WGT20R / sum(WGT20R)) * n())
+    mutate(
+        WGTTO1 = WGT20R / sum(WGT20R),
+        WGTMOD=(WGT20R / sum(WGT20R)) * n()
+        )
 ```
 
 # Simple Visualization
