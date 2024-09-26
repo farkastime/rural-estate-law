@@ -5,33 +5,90 @@ library(tidyverse)
 library(haven)
 library(survey)
 ```
+
+# Data Compilation
 ```{r}
 #| label: load the RAND Longitudinal File
 rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds')
 ```
 
 ```{r}
+# 
 rlf_dd <- rlf %>%
     select(
-        HHIDPN, STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
-        AGE = R15AGEM_E, GENDER = S15GENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC = RAEDYRS,
-        REGION = R15CENREG, RURALITY = R15URBRUR,  
+        RESP_ID = HHIDPN, SPOUSE_ID = S15HHIDPN, INW15, 
+        STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
+        AGE = R15AGEY_E, GENDER = RAGENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC_YRS = RAEDYRS,
+        REGION = R15CENREG, RURAL = R15URBRUR,  
         HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB, OWN_HOME = H15ARLES,
     ) %>%
-    drop_na()
+    filter(INW15 == '1') %>% select(-INW15) %>% # is in wave 15 (responded to survey. N = 15723)
+    mutate( # type conversions
+        across(c(RESP_ID, SPOUSE_ID), as.character),     
+        across(c(WGHT_R, WGHT_H, AGE, EDUC_YRS), as.integer), # convert to integer
+        across(c(STRATUM, SECU, GENDER:RURAL), as_factor), # convert to factor
+        across(SPOUSE_ID, ~na_if(.x, '0')) # NAs for respondants with no spouse
+    ) %>% 
+    mutate( # semantic recodes
+        # all these variables have .-prefixed missing values, rendered correctly by default
+        across(GENDER, ~recode(.x, 
+            '1' = 'Male', 
+            '2' = 'Female')), 
+        across(RACE, ~recode(.x, 
+            '1' = 'White', 
+            '2' = 'Black', 
+            '3' = 'Other')), 
+        across(HISP, ~recode(.x, 
+            '0' = 'Not Hispanic', 
+            '1' = 'Hispanic')), 
+        across(REGION, ~recode(.x, 
+            '1' = 'Northeast', 
+            '2' = 'Midwest', 
+            '3' = 'South', 
+            '4' = 'West', 
+            '5' = 'Other')), 
+        across(RURAL, ~recode(.x, 
+            '1' = 'Urban', 
+            '2' = 'Suburban', 
+            '3' = 'Rural')), 
+        across(HLTH_CHNG, ~recode(.x, 
+            '1' = 'Better', 
+            '2' = 'Same', 
+            '3' = 'Worse')), 
+        across(HLTH_CHNG, ~recode(.x, 
+            '1' = 'Better', 
+            '2' = 'Same', 
+            '3' = 'Worse')), 
+        across(WEALTH, round), # round wealth to nearest dollar
+    ) 
 ```
 
 ```{r}
 #| label: load the Wills data
 wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
-    select(HHID, RSUBHH, PN, WILL_TYPE=RT001) %>%
-    filter(WILL_TYPE %in% 1:5) %>%
+    select(HHID, PN, WILL_TYPE=RT001) %>%
     mutate(
-        HHIDPN = as.numeric(paste0(HHID, PN)),
-        WILL_IND=ifelse(WILL_TYPE %in% 1:3, 'Y', 'N'),
+        RESP_ID = paste0(HHID, PN),
+        across(WILL_TYPE, ~ifelse(.x %in% c('-8', '8', '9'), NA, .x)),
+        across(WILL_TYPE, ~recode(.x, 
+            '1' = 'Will', 
+            '2' = 'Both', 
+            '3' = 'Trust', 
+            '5' = 'Neither')),
+        across(WILL_TYPE, as.factor),
+        WILL_IND = fct_collapse(WILL_TYPE, 
+            Y = c('Will', 'Both', 'Trust'), 
+            N = c('Neither')), 
         across(WILL_IND, ~fct_relevel(as_factor(.x), 'N', 'Y'))
         ) %>%
-    drop_na()
+    select(RESP_ID, WILL_TYPE, WILL_IND) 
+ ```
+
+```{r}
+#merge
+dd <- rlf_dd %>%
+    left_join(wil, by='RESP_ID')
+saveRDS(dd, '/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds')
 ```
 
 ```{r}
@@ -52,8 +109,9 @@ hom <- read_sas('data/hrs/core-2020/h20h_h.sas7bdat') %>%
     drop_na() 
 ```
 
+# Exploratory Data Analysis
+
 ```{r}
-#| label: combine the RAND Longitudinal File with the Wills data
-dd <- rlf_dd %>%
-    left_join(wil, by='HHIDPN') 
+#| label: load the merged data
+dd <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds') 
 ```
