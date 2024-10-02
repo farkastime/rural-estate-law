@@ -15,7 +15,7 @@ rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds
 ```{r}
 # 
 rlf_dd <- rlf %>%
-    select(
+    select( # select and rename
         RESP_ID = HHIDPN, SPOUSE_ID = S15HHIDPN, INW15, 
         STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
         AGE = R15AGEY_E, GENDER = RAGENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC_YRS = RAEDYRS,
@@ -23,44 +23,41 @@ rlf_dd <- rlf %>%
         HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB, OWN_HOME = H15ARLES,
     ) %>%
     filter(INW15 == '1') %>% select(-INW15) %>% # is in wave 15 (responded to survey. N = 15723)
+    mutate( # semantic recodes
+        # anything not matches -> NA by default 
+        across(GENDER, ~case_match(.x, 
+            1 ~ 'Male', 
+            2 ~ 'Female')), 
+        across(RACE, ~case_match(.x, 
+            1 ~ 'White', 
+            2 ~ 'Black', 
+            3 ~ 'Other')), 
+        across(HISP, ~case_match(.x, 
+            0 ~ 'Not Hispanic', 
+            1 ~ 'Hispanic')), 
+        across(REGION, ~case_match(.x, 
+            1 ~ 'Northeast', 
+            2 ~ 'Midwest', 
+            3 ~ 'South', 
+            4 ~ 'West', 
+            5 ~ 'Other')), 
+        across(RURAL, ~case_match(.x, 
+            1 ~ 'Urban', 
+            2 ~ 'Suburban', 
+            3 ~ 'Rural')), 
+        across(HLTH_CHNG, ~case_match(.x, 
+            1 ~ 'Better', 
+            2 ~ 'Same', 
+            3 ~ 'Worse')), 
+        across(WEALTH, round), # round wealth to nearest dollar
+    ) %>%
     mutate( # type conversions
         across(c(RESP_ID, SPOUSE_ID), as.character),     
         across(c(WGHT_R, WGHT_H, AGE, EDUC_YRS), as.integer), # convert to integer
         across(c(STRATUM, SECU, GENDER:RURAL), as_factor), # convert to factor
         across(SPOUSE_ID, ~na_if(.x, '0')) # NAs for respondants with no spouse
-    ) %>% 
-    mutate( # semantic recodes
-        # all these variables have .-prefixed missing values, rendered correctly by default
-        across(GENDER, ~recode(.x, 
-            '1' = 'Male', 
-            '2' = 'Female')), 
-        across(RACE, ~recode(.x, 
-            '1' = 'White', 
-            '2' = 'Black', 
-            '3' = 'Other')), 
-        across(HISP, ~recode(.x, 
-            '0' = 'Not Hispanic', 
-            '1' = 'Hispanic')), 
-        across(REGION, ~recode(.x, 
-            '1' = 'Northeast', 
-            '2' = 'Midwest', 
-            '3' = 'South', 
-            '4' = 'West', 
-            '5' = 'Other')), 
-        across(RURAL, ~recode(.x, 
-            '1' = 'Urban', 
-            '2' = 'Suburban', 
-            '3' = 'Rural')), 
-        across(HLTH_CHNG, ~recode(.x, 
-            '1' = 'Better', 
-            '2' = 'Same', 
-            '3' = 'Worse')), 
-        across(HLTH_CHNG, ~recode(.x, 
-            '1' = 'Better', 
-            '2' = 'Same', 
-            '3' = 'Worse')), 
-        across(WEALTH, round), # round wealth to nearest dollar
     ) 
+rm(rlf)
 ```
 
 ```{r}
@@ -69,12 +66,14 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
     select(HHID, PN, WILL_TYPE=RT001) %>%
     mutate(
         RESP_ID = paste0(HHID, PN),
-        across(WILL_TYPE, ~ifelse(.x %in% c('-8', '8', '9'), NA, .x)),
-        across(WILL_TYPE, ~recode(.x, 
-            '1' = 'Will', 
-            '2' = 'Both', 
-            '3' = 'Trust', 
-            '5' = 'Neither')),
+        # across(WILL_TYPE, ~ifelse(.x %in% c('-8', '8', '9'), NA, .x)),
+        across(WILL_TYPE, ~case_match(.x, 
+            1 ~ 'Will', 
+            2 ~ 'Both', 
+            3 ~ 'Trust', 
+            5 ~ 'Neither', 
+            # .default = NA_character_
+            )),
         across(WILL_TYPE, as.factor),
         WILL_IND = fct_collapse(WILL_TYPE, 
             Y = c('Will', 'Both', 'Trust'), 
