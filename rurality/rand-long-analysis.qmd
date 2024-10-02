@@ -4,6 +4,7 @@
 library(tidyverse)
 library(haven)
 library(survey)
+library(srvyr)
 ```
 
 # Data Compilation
@@ -113,4 +114,17 @@ hom <- read_sas('data/hrs/core-2020/h20h_h.sas7bdat') %>%
 ```{r}
 #| label: load the merged data
 dd <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds') 
+```
+
+
+```{r}
+#| label: summary statistics
+dd_srvy <- as_survey(dd, strata = STRATUM, weights = WGHT_R)
+dd_srvy %>%
+    group_by(WILL_IND) %>%
+    summarize(will_prop = survey_prop())
+dd_srvy2 <- as_survey(dd, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
+dd_srvy2 %>%
+    group_by(WILL_IND) %>%
+    summarize(will_prop = survey_prop())
 ```
