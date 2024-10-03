@@ -119,12 +119,23 @@ dd <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merg
 
 ```{r}
 #| label: summary statistics
-dd_srvy <- as_survey(dd, strata = STRATUM, weights = WGHT_R)
+dd_srvy <- as_survey(dd, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
 dd_srvy %>%
-    group_by(WILL_IND) %>%
-    summarize(will_prop = survey_prop())
-dd_srvy2 <- as_survey(dd, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
-dd_srvy2 %>%
-    group_by(WILL_IND) %>%
-    summarize(will_prop = survey_prop())
+    filter(!is.na(WILL_IND)) %>%
+    filter(!is.na(RURAL)) %>%
+    group_by(REGION, RURAL, WILL_IND) %>%
+    summarize(prop = survey_prop()) %>% 
+    filter(WILL_IND == 'Y') %>% 
+    select(-WILL_IND) %>% view
+```
+
+```{r}
+dd_mod <- dd %>%
+    mutate(across(WILL_IND, ~as.integer(case_match(as.character(.x), 'N' ~ 0, 'Y' ~ 1)))) %>%
+    drop_na() # don't do this
+dd_srvy_mod <- as_survey(dd_mod, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
+mod1 <- svyglm(WILL_IND ~ RURAL + AGE + WEALTH + RACE + HISP + GENDER + HLTH_CHNG, design = dd_srvy_mod, family = 'quasibinomial')
+summary(mod1)
+mod_gen <- svyglm(WILL_IND ~ GENDER, design = dd_srvy_mod, family = 'quasibinomial')
+summary(mod_gen)
 ```
