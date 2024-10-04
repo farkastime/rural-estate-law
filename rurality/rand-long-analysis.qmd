@@ -19,8 +19,8 @@ rlf_dd <- rlf %>%
     select( # select and rename
         RESP_ID = HHIDPN, SPOUSE_ID = S15HHIDPN, INW15, 
         STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
-        AGE = R15AGEY_E, GENDER = RAGENDER, RACE = RARACEM, HISP = RAHISPAN, EDUC_YRS = RAEDYRS,
-        REGION = R15CENREG, RURAL = R15URBRUR,  
+        AGE = R15AGEY_E, GENDER = RAGENDER, RACE = RARACEM, HISP = RAHISPAN, 
+        REGION = R15CENREG, RURAL = R15URBRUR, EDUC_YRS = RAEDYRS,
         HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB, OWN_HOME = H15ARLES,
     ) %>%
     filter(INW15 == '1') %>% select(-INW15) %>% # is in wave 15 (responded to survey. N = 15723)
