@@ -181,12 +181,17 @@ mod1 <- svyglm(WILL_IND ~
     DEGREE +  
     # CHILDREN +  
     OWN_HOME + 
-    MARRIED   
+    MARRIED,
     # VETERAN
-    , 
-    design = dd_srvy_mod, 
+    design = dd_srvy_mod,  #TODO: drop_na appears to influence results. why?
     family = 'binomial', 
     # subset = REGION == 'Midwest'
     ) 
 summary(mod1)
+
+mod2 <- svyglm(WILL_IND ~ RURAL + WEALTH + DEGREE, 
+    design = dd_srvy_mod,  #TODO: drop_na appears to influence results. why?
+    family = 'binomial', 
+)
+summary(mod2)
 ```
