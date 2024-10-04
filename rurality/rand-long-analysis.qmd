@@ -14,14 +14,29 @@ rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds
 ```
 
 ```{r}
-# 
 rlf_dd <- rlf %>%
     select( # select and rename
-        RESP_ID = HHIDPN, SPOUSE_ID = S15HHIDPN, INW15, 
-        STRATUM = RAESTRAT, SECU = RAEHSAMP, WGHT_R = R15WTRESP, WGHT_H = R15WTHH, 
-        AGE = R15AGEY_E, GENDER = RAGENDER, RACE = RARACEM, HISP = RAHISPAN, 
-        REGION = R15CENREG, RURAL = R15URBRUR, EDUC_YRS = RAEDYRS,
-        HLTH_CHNG = R15HLTC3, WEALTH = H15ATOTB, OWN_HOME = H15ARLES,
+        RESP_ID = HHIDPN, # household id + person number
+        SPOUSE_ID = S15HHIDPN, # RESP_ID of spouse
+        HHID = H15HHIDC, # household id
+        INW15, # flag for wave 15 
+        STRATUM = RAESTRAT, # sampling stratum  
+        SECU = RAEHSAMP, # sampling cluster (nested within stratum) 
+        WGHT_R = R15WTRESP, # respondent weight
+        WGHT_H = R15WTHH, # household weight
+        AGE = R15AGEY_E, # age in years
+        GENDER = RAGENDER, # gender: M/F
+        RACE = RARACEM, # race: white, black, other
+        HISPANIC = RAHISPAN, # hispanicity: Hispanic, not Hispanic
+        VETERAN = S15VETRN, # veteran status: Y/N
+        MARRIED = R15MSTATH, # marital status: married, separated / divorced, etc., etc. 
+        CHILDREN = H15CHILD, # number of children
+        REGION = R15CENREG, # US Census region: Northeast, South, West, Midwest, Other (?)
+        RURAL = R15URBRUR, # Beale code for urban/suburban/exurban(rural) county
+        EDUC_YRS = RAEDYRS, # years of education
+        DEGREE = RAEDEGRM, # highest degree: none, GED, HS, HS/GED, AA, BA, MA/MBA, Law/MD/PhD, Other
+        HEALTH_DIFF = R15HLTC3, # change in health condition from last survey
+        WEALTH = H15ATOTB, # total combined wealth of all assets
     ) %>%
     filter(INW15 == '1') %>% select(-INW15) %>% # is in wave 15 (responded to survey. N = 15723)
     mutate( # semantic recodes
@@ -33,32 +48,53 @@ rlf_dd <- rlf %>%
             1 ~ 'White', 
             2 ~ 'Black', 
             3 ~ 'Other')), 
-        across(HISP, ~case_match(.x, 
+        across(HISPANIC, ~case_match(.x, 
             0 ~ 'Not Hispanic', 
             1 ~ 'Hispanic')), 
+        across(VETERAN, ~case_match(.x, 
+            0 ~ 'N', 
+            1 ~ 'Y')), 
         across(REGION, ~case_match(.x, 
             1 ~ 'Northeast', 
             2 ~ 'Midwest', 
             3 ~ 'South', 
             4 ~ 'West', 
             5 ~ 'Other')), 
-        across(RURAL, ~case_match(.x, 
-            1 ~ 'Urban', 
-            2 ~ 'Suburban', 
-            3 ~ 'Rural')), 
-        across(HLTH_CHNG, ~case_match(.x, 
+        across(RURAL, ~
+            case_match(.x, 
+                1 ~ 'Urban', 
+                2 ~ 'Suburban', 
+                3 ~ 'Rural') %>%
+            fct_relevel('Rural', 'Suburban', 'Urban')), 
+        across(HEALTH_DIFF, ~case_match(.x, 
             1 ~ 'Better', 
             2 ~ 'Same', 
             3 ~ 'Worse')), 
+        across(MARRIED, ~
+            as.factor(.x) %>%
+            fct_collapse( 
+                'Married' = c('1', '2'), # married, married spouse absent
+                'Unmarried' = c('4', '5', '6', '7', '8'))), # separated, divorced, separated/divorced, widowed, never married
+        across(CHILDREN, ~
+           ifelse(.x == 0, 'N', 'Y') %>%
+           as.factor), 
+        across(DEGREE, ~ .x %>%
+            case_match(8 ~ NA, .default = .x) %>% # hacky (?) way to introduce NA for 8
+            as.factor %>%
+            fct_collapse(
+                'None' = '0', # did not finish high school
+                'High School' = c('1', '2', '3'), # high school or GED
+                'College' = c('4', '5'), # Associates' or Bachelor's
+                'Graduate' = c('6', '7'))), # MA/MBA/JD/MD/PhD
         across(WEALTH, round), # round wealth to nearest dollar
     ) %>%
     mutate( # type conversions
         across(c(RESP_ID, SPOUSE_ID), as.character),     
         across(c(WGHT_R, WGHT_H, AGE, EDUC_YRS), as.integer), # convert to integer
-        across(c(STRATUM, SECU, GENDER:RURAL), as_factor), # convert to factor
+        across(c(STRATUM, SECU, GENDER, RACE, HISPANIC, VETERAN, REGION, RURAL), as_factor), # convert to factor
         across(SPOUSE_ID, ~na_if(.x, '0')) # NAs for respondants with no spouse
     ) 
-rm(rlf)
+# rm(rlf)
 ```
 
 ```{r}
@@ -84,29 +120,28 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
     select(RESP_ID, WILL_TYPE, WILL_IND) 
  ```
 
-```{r}
-#merge
-dd <- rlf_dd %>%
-    left_join(wil, by='RESP_ID')
-saveRDS(dd, '/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds')
-```
 
 ```{r}
 #| label: load the home ownership data
 hom <- read_sas('data/hrs/core-2020/h20h_h.sas7bdat') %>%
     select(
-        HHID, RSUBHH, own_home=RH004,
+        HHID_WOSUB=HHID, RSUBHH, OWN_HOME=RH004,
     ) %>% # only the 2020 survey
-    mutate(OWNHOME_IND = ifelse(OWN_HOME == '1', 'Y', 'N')) %>%
     mutate(
-        across(OWNHOME_IND, ~fct_relevel(as_factor(.x), "N", "Y")),
-        # across(HOME_VAL, as.numeric)
-        ) %>%
-    filter(
-        OWN_HOME %in% 1:7, # excluding don't know, refused, and missing
-        # between(HOME_VAL, 0, 3000000000) 
+        across(OWN_HOME, ~ case_match(.x, 
+                1 ~ 'Y', 
+                c(2, 3) ~ 'N') %>%
+            as.factor), 
+        HHID = paste0(HHID_WOSUB, RSUBHH)
     ) %>%
-    drop_na() 
+    select(HHID, OWN_HOME)
+```
+```{r}
+#merge
+dd <- rlf_dd %>%
+    left_join(wil, by='RESP_ID') %>%
+    left_join(hom, by='HHID')
+saveRDS(dd, '/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds')
 ```
 
 # Exploratory Data Analysis
@@ -131,11 +166,27 @@ dd_srvy %>%
 
 ```{r}
 dd_mod <- dd %>%
-    mutate(across(WILL_IND, ~as.integer(case_match(as.character(.x), 'N' ~ 0, 'Y' ~ 1)))) %>%
-    drop_na() # don't do this
+    mutate(across(WILL_IND, ~as.integer(case_match(as.character(.x), 'N' ~ 0, 'Y' ~ 1))))
 dd_srvy_mod <- as_survey(dd_mod, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
-mod1 <- svyglm(WILL_IND ~ RURAL + AGE + WEALTH + RACE + HISP + GENDER + HLTH_CHNG, design = dd_srvy_mod, family = 'quasibinomial')
+mod1 <- svyglm(WILL_IND ~ 
+    RURAL +
+    # REGION + 
+    AGE + 
+    WEALTH + 
+    RACE + 
+    HISPANIC + 
+    GENDER + 
+    MARRIED + 
+    # HEALTH_DIFF + 
+    DEGREE +  
+    # CHILDREN +  
+    OWN_HOME + 
+    MARRIED   
+    # VETERAN
+    , 
+    design = dd_srvy_mod, 
+    family = 'binomial', 
+    # subset = REGION == 'Midwest'
+    ) 
 summary(mod1)
-mod_gen <- svyglm(WILL_IND ~ GENDER, design = dd_srvy_mod, family = 'quasibinomial')
-summary(mod_gen)
 ```
