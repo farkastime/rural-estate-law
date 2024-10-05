@@ -14,17 +14,27 @@ rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds
 ```
 
 ```{r}
+waves <- c(14, 15)
+varnames = c('SPOUSE_ID', 'HHID')
+vars <- waves %>%
+    purrr::set_names(nm=paste0('HHID', waves)) %>%
+    map(\(x) paste0('H', x, 'HHIDC')) 
+rlf %>%
+    select(!!!vars)
+```
+```{r}
 rlf_dd <- rlf %>%
     select( # select and rename
         RESP_ID = HHIDPN, # household id + person number
         SPOUSE_ID = S15HHIDPN, # RESP_ID of spouse
-        HHID = H15HHIDC, # household id
+        # HHID = H15HHIDC, # household id
+        HHID = paste0('H', wave, 'HHIDC'), # household id
         INW15, # flag for wave 15 
         STRATUM = RAESTRAT, # sampling stratum  
         SECU = RAEHSAMP, # sampling cluster (nested within stratum) 
-        WGHT_R = R15WTRESP, # respondent weight
-        WGHT_H = R15WTHH, # household weight
-        AGE = R15AGEY_E, # age in years
+        WGHT_R = paste0('R', wave, 'WTRESP'), # respondent weight
+        WGHT_H = paste0('R', wave, 'WTHH'), # respondent weight
+        AGE = paste0('R', wave, 'AGEY_E') # age in years
         GENDER = RAGENDER, # gender: M/F
         RACE = RARACEM, # race: white, black, other
         HISPANIC = RAHISPAN, # hispanicity: Hispanic, not Hispanic
