@@ -14,13 +14,36 @@ rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds
 ```
 
 ```{r}
+# simple example of selecting columns by wave
 waves <- c(14, 15)
 varnames = c('SPOUSE_ID', 'HHID')
 vars <- waves %>%
-    purrr::set_names(nm=paste0('HHID', waves)) %>%
+    set_names(nm=paste0('HHID', waves)) %>%
     map(\(x) paste0('H', x, 'HHIDC')) 
 rlf %>%
     select(!!!vars)
+```
+
+```{r}
+# all columns by wave in nested list
+varlist <- list(
+    SPOUSE_ID = list(prefix = 'S', suffix = 'HHIDPN'),
+    HHID = list(prefix = 'H', suffix = 'HHIDC'), 
+    INWAVE = list(prefix = 'INW', suffix = '')
+)
+vars <- c(map(varlist, \(x) map(waves, \(y) paste0(x$prefix, y, x$suffix))), recursive = TRUE)
+names <- c(map(names(varlist), \(x) paste0(x, waves)), recursive = TRUE)
+vars <- vars %>% set_names(names)
+vars <- c(RESP_ID = 'HHIDPN', vars)
+
+dd <- rlf %>%
+    select(!!!vars)
+```
+
+```{r}
+# pivot long
+dd %>%
+    pivot_longer(c(starts_with('SPOUSE_ID'), starts_with('HHID')))
 ```
 ```{r}
 rlf_dd <- rlf %>%
