@@ -26,15 +26,37 @@ rlf %>%
 
 ```{r}
 # all columns by wave in nested list
+waves <- c(1:15)
 varlist <- list(
     SPOUSE_ID = list(prefix = 'S', suffix = 'HHIDPN'),
     HHID = list(prefix = 'H', suffix = 'HHIDC'), 
-    INWAVE = list(prefix = 'INW', suffix = '')
+    INWAVE = list(prefix = 'INW', suffix = ''), 
+    WGHT_R = list(prefix = 'R', suffix = 'WTRESP'), 
+    WGHT_H = list(prefix = 'R', suffix = 'WTHH'),
+    AGE = list(prefix = 'R', suffix = 'AGEY_E'), 
+    VETERAN = list(prefix = 'S', suffix = 'VETRN'),
+    MARRIED = list(prefix = 'R', suffix = 'MSTATH'),
+    CHILDREN = list(prefix = 'H', suffix = 'CHILD'),
+    REGION = list(prefix = 'R', suffix = 'CENREG'),
+    RURAL = list(prefix = 'R', suffix = 'URBRUR'),
+    HLTH_DIFF = list(prefix = 'R', suffix = 'HLTC3'),
+    WEALTH = list(prefix = 'H', suffix = 'ATOTB')
 )
+
 vars <- c(map(varlist, \(x) map(waves, \(y) paste0(x$prefix, y, x$suffix))), recursive = TRUE)
 names <- c(map(names(varlist), \(x) paste0(x, waves)), recursive = TRUE)
 vars <- vars %>% set_names(names)
-vars <- c(RESP_ID = 'HHIDPN', vars)
+
+vars <- c(
+    RESP_ID = 'HHIDPN', 
+    STRATUM = 'RAESTRAT', # sampling stratum  
+    SECU = 'RAEHSAMP', # sampling cluster (nested within stratum)  
+    GENDER = 'RAGENDER', # gender: M/F
+    RACE = 'RARACEM', # race: white, black, other
+    HISPANIC = 'RAHISPAN', # hispanicity: Hispanic, not Hispanic
+    EDUC_YRS = 'RAEDYRS', # years of education
+    DEGREE = 'RAEDEGRM', # highest degree: none, GED, HS, HS/GED, AA, BA, MA/MBA, Law/MD/PhD, Other
+    vars) # add non-wave specific vars
 
 dd <- rlf %>%
     select(!!!vars)
@@ -42,8 +64,23 @@ dd <- rlf %>%
 
 ```{r}
 # pivot long
-dd %>%
-    pivot_longer(c(starts_with('SPOUSE_ID'), starts_with('HHID')))
+dd2 <- dd %>%
+    pivot_longer(
+        cols = c(starts_with(names(varlist))), 
+        names_to = c('.value', 'WAVE'), 
+        names_pattern = '(.*?)([0-9]{1,2})'
+    ) %>%
+    filter(INWAVE == 1) %>% select(!INWAVE) %>%
+    group_by(RESP_ID) %>%
+    mutate(
+        across(WAVE, as.numeric),
+        WAVEMAX = max(WAVE),
+        WAVEMIN = min(WAVE)
+    ) %>%
+    filter(WAVE == WAVEMIN) %>%
+    select(!c(WAVEMAX, WAVEMIN))
+
+
 ```
 ```{r}
 rlf_dd <- rlf %>%
