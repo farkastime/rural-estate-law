@@ -15,7 +15,7 @@ rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds
 
 ```{r}
 # simple example of selecting columns by wave
-waves <- c(14, 15)
+waves <- c(14)
 varnames = c('SPOUSE_ID', 'HHID')
 vars <- waves %>%
     set_names(nm=paste0('HHID', waves)) %>%
@@ -26,7 +26,7 @@ rlf %>%
 
 ```{r}
 # all columns by wave in nested list
-waves <- c(1:15)
+waves <- c(14)
 varlist <- list(
     SPOUSE_ID = list(prefix = 'S', suffix = 'HHIDPN'),
     HHID = list(prefix = 'H', suffix = 'HHIDC'), 
@@ -78,42 +78,17 @@ dd2 <- dd %>%
         WAVEMIN = min(WAVE)
     ) %>%
     filter(WAVE == WAVEMIN) %>%
-    select(!c(WAVEMAX, WAVEMIN))
-
+    select(!c(WAVEMAX, WAVEMIN)) %>%
+    ungroup()
 
 ```
 ```{r}
-rlf_dd <- rlf %>%
-    select( # select and rename
-        RESP_ID = HHIDPN, # household id + person number
-        SPOUSE_ID = S15HHIDPN, # RESP_ID of spouse
-        # HHID = H15HHIDC, # household id
-        HHID = paste0('H', wave, 'HHIDC'), # household id
-        INW15, # flag for wave 15 
-        STRATUM = RAESTRAT, # sampling stratum  
-        SECU = RAEHSAMP, # sampling cluster (nested within stratum) 
-        WGHT_R = paste0('R', wave, 'WTRESP'), # respondent weight
-        WGHT_H = paste0('R', wave, 'WTHH'), # respondent weight
-        AGE = paste0('R', wave, 'AGEY_E') # age in years
-        GENDER = RAGENDER, # gender: M/F
-        RACE = RARACEM, # race: white, black, other
-        HISPANIC = RAHISPAN, # hispanicity: Hispanic, not Hispanic
-        VETERAN = S15VETRN, # veteran status: Y/N
-        MARRIED = R15MSTATH, # marital status: married, separated / divorced, etc., etc. 
-        CHILDREN = H15CHILD, # number of children
-        REGION = R15CENREG, # US Census region: Northeast, South, West, Midwest, Other (?)
-        RURAL = R15URBRUR, # Beale code for urban/suburban/exurban(rural) county
-        EDUC_YRS = RAEDYRS, # years of education
-        DEGREE = RAEDEGRM, # highest degree: none, GED, HS, HS/GED, AA, BA, MA/MBA, Law/MD/PhD, Other
-        HEALTH_DIFF = R15HLTC3, # change in health condition from last survey
-        WEALTH = H15ATOTB, # total combined wealth of all assets
-    ) %>%
-    filter(INW15 == '1') %>% select(-INW15) %>% # is in wave 15 (responded to survey. N = 15723)
+dd3 <- dd2 %>%
     mutate( # semantic recodes
         # anything not matches -> NA by default 
         across(GENDER, ~case_match(.x, 
             1 ~ 'Male', 
-            2 ~ 'Female')), 
+            2 ~ 'Female')),
         across(RACE, ~case_match(.x, 
             1 ~ 'White', 
             2 ~ 'Black', 
@@ -136,7 +111,7 @@ rlf_dd <- rlf %>%
                 2 ~ 'Suburban', 
                 3 ~ 'Rural') %>%
             fct_relevel('Rural', 'Suburban', 'Urban')), 
-        across(HEALTH_DIFF, ~case_match(.x, 
+        across(HLTH_DIFF, ~case_match(.x, 
             1 ~ 'Better', 
             2 ~ 'Same', 
             3 ~ 'Worse')), 
@@ -156,7 +131,7 @@ rlf_dd <- rlf %>%
                 'High School' = c('1', '2', '3'), # high school or GED
                 'College' = c('4', '5'), # Associates' or Bachelor's
                 'Graduate' = c('6', '7'))), # MA/MBA/JD/MD/PhD
-        across(WEALTH, round), # round wealth to nearest dollar
+        across(WEALTH, round) # round wealth to nearest dollar
     ) %>%
     mutate( # type conversions
         across(c(RESP_ID, SPOUSE_ID), as.character),     
@@ -164,13 +139,12 @@ rlf_dd <- rlf %>%
         across(c(STRATUM, SECU, GENDER, RACE, HISPANIC, VETERAN, REGION, RURAL), as_factor), # convert to factor
         across(SPOUSE_ID, ~na_if(.x, '0')) # NAs for respondants with no spouse
     ) 
-# rm(rlf)
 ```
 
 ```{r}
 #| label: load the Wills data
-wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
-    select(HHID, PN, WILL_TYPE=RT001) %>%
+wil <- read_sas('data/hrs/core-2018/h18t_r.sas7bdat') %>%
+    select(HHID, PN, WILL_TYPE=QT001) %>%
     mutate(
         RESP_ID = paste0(HHID, PN),
         # across(WILL_TYPE, ~ifelse(.x %in% c('-8', '8', '9'), NA, .x)),
@@ -193,32 +167,32 @@ wil <- read_sas('data/hrs/core-2020/h20t_r.sas7bdat') %>%
 
 ```{r}
 #| label: load the home ownership data
-hom <- read_sas('data/hrs/core-2020/h20h_h.sas7bdat') %>%
+hom <- read_sas('data/hrs/core-2018/h18h_h.sas7bdat') %>%
     select(
-        HHID_WOSUB=HHID, RSUBHH, OWN_HOME=RH004,
+        HHID_WOSUB=HHID, QSUBHH, OWN_HOME=QH004,
     ) %>% # only the 2020 survey
     mutate(
         across(OWN_HOME, ~ case_match(.x, 
                 1 ~ 'Y', 
                 c(2, 3) ~ 'N') %>%
             as.factor), 
-        HHID = paste0(HHID_WOSUB, RSUBHH)
+        HHID = paste0(HHID_WOSUB, QSUBHH)
     ) %>%
     select(HHID, OWN_HOME)
 ```
 ```{r}
 #merge
-dd <- rlf_dd %>%
+dd <- dd3 %>%
     left_join(wil, by='RESP_ID') %>%
     left_join(hom, by='HHID')
-saveRDS(dd, '/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds')
+saveRDS(dd, '/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged-2018.rds')
 ```
 
 # Exploratory Data Analysis
 
 ```{r}
 #| label: load the merged data
-dd <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged.rds') 
+dd <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file-merged-2018.rds') 
 ```
 
 
@@ -239,20 +213,25 @@ dd_mod <- dd %>%
     mutate(across(WILL_IND, ~as.integer(case_match(as.character(.x), 'N' ~ 0, 'Y' ~ 1))))
 dd_srvy_mod <- as_survey(dd_mod, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
 mod1 <- svyglm(WILL_IND ~ 
-    RURAL +
-    # REGION + 
-    AGE + 
+    RURAL * 
     WEALTH + 
+    RURAL * 
     RACE + 
+    RURAL * 
+    AGE + 
+    RURAL * 
     HISPANIC + 
-    GENDER + 
+    RURAL * 
     MARRIED + 
-    # HEALTH_DIFF + 
+    GENDER + 
+    RURAL * 
     DEGREE +  
-    # CHILDREN +  
-    OWN_HOME + 
-    MARRIED,
-    # VETERAN
+    HLTH_DIFF + 
+    RURAL * 
+    CHILDREN +  
+    RURAL * 
+    OWN_HOME,
+    # VETERAN,
     design = dd_srvy_mod,  #TODO: drop_na appears to influence results. why?
     family = 'binomial', 
     # subset = REGION == 'Midwest'
