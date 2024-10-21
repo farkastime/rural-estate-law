@@ -13,7 +13,7 @@ library(srvyr)
 rlf <- readRDS('/Users/tim/projects/rural-estate-law/data/hrs/rand-long-file.rds')
 ```
 
-```{r}
+```{r, eval = FALSE}
 # simple example of selecting columns by wave
 waves <- c(14)
 varnames = c('SPOUSE_ID', 'HHID')
@@ -209,6 +209,7 @@ dd_srvy %>%
 ```
 
 ```{r}
+# logistic regression models
 dd_mod <- dd %>%
     mutate(across(WILL_IND, ~as.integer(case_match(as.character(.x), 'N' ~ 0, 'Y' ~ 1))))
 dd_srvy_mod <- as_survey(dd_mod, strata = STRATUM, weights = WGHT_R, id = SECU, nest = TRUE)
