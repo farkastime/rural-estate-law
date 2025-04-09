@@ -1,0 +1,74 @@
+---
+title: "Heirs Property Rates By County"
+format: html
+editor: visual
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(writexl)
+```
+
+# Chaves
+
+## Dataset
+
+```{r}
+chaves_parcels <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/Heirs Property/County Parcel Data/Chaves/Chaves County Parcel Data Split By Owner.xlsx")  
+```
+
+## Split Name Column by Semicolon
+
+(Creates a separate row for each owner with all other parcel data duplicated)
+
+```{r}
+chaves_parcel_owners <- chaves_parcels %>%
+  separate_rows(NAME, sep = ";") %>%  
+  mutate(NAME = str_trim(NAME))  
+
+```
+
+## Save Modified Dataset
+
+```{r}
+
+write_xlsx(chaves_parcel_owners, "Chaves County Parcel Owners.xlsx")
+print("Data has been successfully transformed and saved as 'Chaves County Parcel Owners.xlsx'")
+```
+
+## Creating a Dataset Excluding Businesses
+
+```{r}
+
+# Load the Excel file
+chaves_all_owners <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/Heirs Property/County Parcel Data/Chaves/Chaves County Parcel Owners.xlsx")
+
+# Filter out rows where NAME contains LLC or Inc (with or without a period)
+chaves_natural_owners <- chaves_all_owners %>%
+  filter(!str_detect(NAME, "\\b(LLC|INC\\.?|INC|LTD|CO\\.?|CO|CHURCH|TRUST|TRUSTEE|IGLESIA|ASSOC\\.?|ASSOC|ASSOCIATION|FOUNDATION|BOARD|TRUSTEES|LP|DAIRY|PARTNERSHIP|BANK|LIMITED|PARTNERS|FARMS|PROPERTIES|PROPERTY|FARMS|CITY|COUNTY|CORP|CORPORATION|LLLP^ET AL$|^ET UX$)\\b"))
+
+
+# Save the cleaned dataset
+write_xlsx(chaves_natural_owners, "Chaves Natural Owners.xlsx")
+
+print("Filtered file has been successfully saved as 'Chaves Natural Owners.xlsx'")
+```
+
+## Removing Duplicate Name/Address Pairs
+
+```{r}
+# Load the Excel file
+chaves_natural_owners <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/Heirs Property/County Parcel Data/Chaves Natural Owners.xlsx")
+
+# Remove duplicate rows based on NAME and ADDRESS
+chaves_natural_owners_unique <- chaves_natural_owners %>%
+  distinct(NAME, ADDRESS1, .keep_all = TRUE)  # Keeps only the first occurrence
+
+# Save the cleaned dataset
+write_xlsx(chaves_natural_owners_unique, "Chaves Natural Owners Duplicate Pairs Removed")
+
+print("Duplicate name-address combinations removed! Saved as 'Chaves Natural Owners Duplicate Pairs Removed.xlsx'.")
+```
