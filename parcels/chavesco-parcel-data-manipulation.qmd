@@ -17,7 +17,8 @@ library(writexl)
 ## Dataset
 
 ```{r}
-chaves_parcels <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/Heirs Property/County Parcel Data/Chaves/Chaves County Parcel Data Split By Owner.xlsx")  
+# chaves_parcels <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/Heirs Property/County Parcel Data/Chaves/Chaves County Parcel Data Split By Owner.xlsx")  
+chaves_parcels <- read_excel("chavesco-parcels.xlsx") # use core dataset
 ```
 
 ## Split Name Column by Semicolon
@@ -25,10 +26,24 @@ chaves_parcels <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive-Un
 (Creates a separate row for each owner with all other parcel data duplicated)
 
 ```{r}
-chaves_parcel_owners <- chaves_parcels %>%
-  separate_rows(NAME, sep = ";") %>%  
-  mutate(NAME = str_trim(NAME))  
+chaves_parcels %>%
+  select(NAME) %>% # for diagnostics only. TODO: remove me!
+  mutate(across(NAME, ~ .x %>% 
+    str_trim %>% # let's do this first thing. leading / trailing spaces can't be helpful
+    str_to_upper
+  )) %>% 
+  separate_rows(NAME, sep = ";") %>% # TODO: confirm ";" is universal ownership separator 
+  mutate(across(NAME, ~ .x %>%
+    str_trim # do again for good measure (can't hurt!)
+    )
+   ) 
+  
+```
 
+```{r}
+corp_patterns <- c(
+"\\b(LLC|INC\\.?|INC|LTD|CO\\.?|CO|CHURCH|TRUST|TRUSTEE|IGLESIA|ASSOC\\.?|ASSOC|ASSOCIATION|FOUNDATION|BOARD|TRUSTEES|LP|DAIRY|PARTNERSHIP|BANK|LIMITED|PARTNERS|FARMS|PROPERTIES|PROPERTY|FARMS|CITY|COUNTY|CORP|CORPORATION|LLLP^ET AL$|^ET UX$)\\b"
+)
 ```
 
 ## Save Modified Dataset
@@ -49,7 +64,6 @@ chaves_all_owners <- read_excel("/Users/sophierane/Library/CloudStorage/OneDrive
 # Filter out rows where NAME contains LLC or Inc (with or without a period)
 chaves_natural_owners <- chaves_all_owners %>%
   filter(!str_detect(NAME, "\\b(LLC|INC\\.?|INC|LTD|CO\\.?|CO|CHURCH|TRUST|TRUSTEE|IGLESIA|ASSOC\\.?|ASSOC|ASSOCIATION|FOUNDATION|BOARD|TRUSTEES|LP|DAIRY|PARTNERSHIP|BANK|LIMITED|PARTNERS|FARMS|PROPERTIES|PROPERTY|FARMS|CITY|COUNTY|CORP|CORPORATION|LLLP^ET AL$|^ET UX$)\\b"))
-
 
 # Save the cleaned dataset
 write_xlsx(chaves_natural_owners, "Chaves Natural Owners.xlsx")
