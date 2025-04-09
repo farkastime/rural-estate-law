@@ -58,7 +58,7 @@ non_businesses <- chaves_parcels %>% filter(!is_business)
 
 # Step 3: Normalize delimiters and separate names into rows
 parsed <- non_businesses %>%
-  mutate(NAME = str_replace_all(NAME, "\\s*[;&]\\s*", ";")) %>% # TODO: what about "& Sons" etc.?
+  mutate(NAME = str_replace_all(NAME, "*\\s[;&]\\s*", ";")) %>% # TODO: what about "& Sons" etc.?
   separate_rows(NAME, sep = ";") %>%
   mutate(NAME = str_trim(NAME))
 
@@ -73,28 +73,31 @@ parsed <- parsed %>%
     #   str_extract(remainder, suffix_pattern) %>% str_remove_all(",\\s*|\\."),
     #   NA_character_
     # ),
-    suffix = str_trim(str_extract(remainder, suffix_pattern)), 
+    suffix = str_extract(NAME, suffix_pattern) %>%
+      str_trim, 
     # given_names = str_trim(str_remove(remainder, suffix_pattern))
   )
 
+parsed %>% select(NAME, last_name, suffix) %>% print(n = 1000)
+
 # Step 5: Fill down last names where missing
-parsed <- parsed %>%
-  group_by(across(-c(NAME, last_name, remainder, given_names, has_comma, suffix))) %>%
-  mutate(
-    last_name = zoo::na.locf(last_name, na.rm = FALSE),
-    NAME = case_when(
-      !is.na(suffix) ~ str_c(last_name, given_names, suffix, sep = ", "),
-      TRUE ~ str_c(last_name, given_names, sep = ", ")
-    )
-  ) %>%
-  ungroup() %>%
-  select(-last_name, -given_names, -remainder, -has_comma, -suffix)
+# parsed <- parsed %>%
+#   group_by(across(-c(NAME, last_name, remainder, given_names, has_comma, suffix))) %>%
+#   mutate(
+#     last_name = zoo::na.locf(last_name, na.rm = FALSE),
+#     NAME = case_when(
+#       !is.na(suffix) ~ str_c(last_name, given_names, suffix, sep = ", "),
+#       TRUE ~ str_c(last_name, given_names, sep = ", ")
+#     )
+#   ) %>%
+#   ungroup() %>%
+#   select(-last_name, -given_names, -remainder, -has_comma, -suffix)
 
-# Step 6: Combine cleaned names with business names
-chaves_owners <- bind_rows(parsed, businesses) %>% arrange(NAME)
+# # Step 6: Combine cleaned names with business names
+# chaves_owners <- bind_rows(parsed, businesses) %>% arrange(NAME)
 
-# Preview
-print(chaves_owners)
+# # Preview
+# print(chaves_owners)
 
 
 ```
