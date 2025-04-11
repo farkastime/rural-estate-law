@@ -7,19 +7,135 @@ editor: visual
 # Packages
 
 ```{r}
-library(tidyverse)
+# library(tidyverse)
 library(readxl)
 library(writexl)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(zoo)
 ```
 
-# Chaves
-
-## Dataset
+## Import Data
 
 ```{r}
-chaves_parcels <- read_csv("/Users/timfarkas/repos/rural-estate-law/parcels/Chaves County Parcel Data All.csv")  
+chaves_parcels <- dd_raw <- read_csv("/Users/timfarkas/repos/rural-estate-law/parcels/Chaves County Parcel Data All.csv")  
 ```
 
+
+## Set Up Regex
+
+To Handle:
+1. last, First AKA First2 Middle
+2. Jr, Sr, II, III
+3. LLC, INC, LTD
+4. New Mexico, State Of
+5. Dexter, Town Of 
+5. Last, Husband & Wife 
+6. Last, First (Nickname) Middle
+7. TRUST, TRUSTEES
+8. Last First (no comma)
+```{r}
+suffixes <- c("JR", "SR", "II", "III")
+# capture any white space followed by any suffix in the list at the end of the string
+suffix_pattern <- paste0("\\s(", paste(suffixes, collapse = "|"), ")$")
+biz_keys <- c(
+  "LLC", 
+  "LIMITED", 
+  "LIABILITY", 
+  "CO",
+  "COMPANY", 
+  "CORPORATION", 
+  "CORP",
+  "INC", 
+  "INCORPORATED", 
+  "LTD", 
+  "CHURCH", 
+  "TRUST", 
+  "TRUSTEE",
+  "TRUSTEES", 
+  "IGLESIA", 
+  "TEMPLE", 
+  "ASSOC", 
+  "ASSOCIATION", 
+  "FOUNDATION", 
+  "BOARD", 
+  "LP",
+  "DAIRY", 
+  "RANCH", 
+  "PARTNERSHIP", 
+  "BANK", 
+  "PARTNERS", 
+  "FARM", 
+  "FARMS", 
+  "PROPERTIES", 
+  "PROPERTY", 
+  "CITY", 
+  "COUNTY", 
+  "STATE", 
+  "STATES", 
+  "TOWN",
+  "LLLP",
+  "DEPT",
+  "DEPARTMENT",
+  "PLC",
+  "ENTERPRISES",
+  "ENTERPRISE",
+  "GROUP",
+  "COMPANY",
+  "MORTGAGE",
+  "CREDIT",
+  "FINANCIAL",
+  "LENDING",
+  "SERVICING",
+  "FUND",
+  "HOUSING",
+  "AUTHORITY",
+  "AGENCY",
+  "SCHOOL",
+  "UNIVERSITY",
+  "COLLEGE",
+  "INSTITUTE",
+  "CLUB",
+  "UNION",
+  "SOCIETY",
+  "SERVICE"
+  ) 
+
+biz_patterns <- paste0(
+  "\\b(", 
+  paste(biz_keys, collapse = "\\.?|"), 
+  ")\\b"
+)
+```
+
+
+## Transform Data 
+```{r}
+dd <- dd_raw %>%
+  drop_na(CLASSCD1_DESC) %>% 
+  separate_rows(NAME, sep = ";") %>% 
+  filter(
+    !str_detect(NAME, biz_patterns), 
+    str_detect(NAME, ","), 
+    ) %>%
+  separate_wider_delim(
+    NAME, delim = ",", 
+    names = c("LAST", "FIRST"), 
+    too_many = "drop")  %>% 
+  separate_rows(FIRST, sep = "&") %>% 
+  mutate(
+    across(FIRST, ~str_trim(.x)),
+    first_no_suffix = str_extract(FIRST, paste0("^.*(?=", suffix_pattern, ")")), 
+    SUFFIX = str_extract(FIRST, suffix_pattern)
+    ) %>% 
+  mutate(across(FIRST, ~ifelse(is.na(first_no_suffix), .x, first_no_suffix))) 
+```
+
+```{r}
+
+```
 ## **Remove Non-Real Property**
 
 ```{r}
