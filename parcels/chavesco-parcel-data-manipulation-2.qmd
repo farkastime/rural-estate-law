@@ -122,6 +122,7 @@ dd <- dd_raw %>%
     !str_detect(NAME, biz_patterns), # remove business names
     str_detect(NAME, ","), # remove rows without commas
     ) %>%
+  mutate(ORIG_NAME = NAME) %>% # keep original name for reference
   separate_wider_delim( # split last and first names into columns by comma
     NAME, delim = ",", 
     names = c("LAST", "FIRST"), 
