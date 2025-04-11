@@ -40,6 +40,7 @@ To Handle:
 suffixes <- c("JR", "SR", "II", "III")
 # capture any white space followed by any suffix in the list at the end of the string
 suffix_pattern <- paste0("\\s(", paste(suffixes, collapse = "|"), ")$")
+# all the business patterns
 biz_keys <- c(
   "LLC", 
   "LIMITED", 
@@ -103,9 +104,10 @@ biz_keys <- c(
   "SERVICE"
   ) 
 
+# turn into regex for data manipulation
 biz_patterns <- paste0(
   "\\b(", 
-  paste(biz_keys, collapse = "\\.?|"), 
+  paste(biz_keys, collapse = "\\.?|"), # adding a "." to end of everything probably just fine
   ")\\b"
 )
 ```
@@ -114,23 +116,26 @@ biz_patterns <- paste0(
 ## Transform Data 
 ```{r}
 dd <- dd_raw %>%
-  drop_na(CLASSCD1_DESC) %>% 
-  separate_rows(NAME, sep = ";") %>% 
+  drop_na(CLASSCD1_DESC) %>% # filter out non-real property
+  separate_rows(NAME, sep = ";") %>% # create new rows split by semicolon
   filter(
-    !str_detect(NAME, biz_patterns), 
-    str_detect(NAME, ","), 
+    !str_detect(NAME, biz_patterns), # remove business names
+    str_detect(NAME, ","), # remove rows without commas
     ) %>%
-  separate_wider_delim(
+  separate_wider_delim( # split last and first names into columns by comma
     NAME, delim = ",", 
     names = c("LAST", "FIRST"), 
-    too_many = "drop")  %>% 
-  separate_rows(FIRST, sep = "&") %>% 
+    too_many = "drop")  %>% # if there are more than two commas, drop the row entirely
+  separate_rows(FIRST, sep = "&") %>%  # split rows by ampersand
   mutate(
-    across(FIRST, ~str_trim(.x)),
-    first_no_suffix = str_extract(FIRST, paste0("^.*(?=", suffix_pattern, ")")), 
-    SUFFIX = str_extract(FIRST, suffix_pattern)
-    ) %>% 
-  mutate(across(FIRST, ~ifelse(is.na(first_no_suffix), .x, first_no_suffix))) 
+    across(FIRST, ~str_trim(.x)), # trim whitespace
+    # get everything up to suffix 
+    first_no_suffix = str_extract(FIRST, paste0("^.*(?=", suffix_pattern, ")")),  
+    # get just the suffix
+    SUFFIX = str_extract(FIRST, suffix_pattern), # just the suffix
+    # replace the first name with suffix-deletec name if suffix exists
+    across(FIRST, ~ifelse(is.na(first_no_suffix), .x, first_no_suffix))
+    ) 
 ```
 
 ```{r}
