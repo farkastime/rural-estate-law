@@ -127,6 +127,7 @@ dd <- dd_raw %>%
     NAME, delim = ",", 
     names = c("LAST", "FIRST"), 
     too_many = "drop")  %>% # if there are more than two commas, drop the row entirely
+  rename(NAME=ORIG_NAME) %>% # rename the original name column
   separate_rows(FIRST, sep = "&") %>%  # split rows by ampersand
   mutate(
     across(FIRST, ~str_trim(.x)), # trim whitespace
@@ -136,5 +137,7 @@ dd <- dd_raw %>%
     SUFFIX = str_extract(FIRST, suffix_pattern), # just the suffix
     # replace the first name with suffix-deletec name if suffix exists
     across(FIRST, ~ifelse(is.na(first_no_suffix), .x, first_no_suffix))
-    ) 
+    ) %>%
+  distinct(LAST, FIRST, SUFFIX, ADDRESS1, ADDRESS2, CITY, STATE, ZIPCODE) %>% View
+
 ```
