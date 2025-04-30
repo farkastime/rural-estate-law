@@ -1,0 +1,1554 @@
+---
+title: "master County Data Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: load libraries
+library(tidyverse)
+library(haven)
+library(janitor)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(writexl)
+```
+
+# Master Dataset - All Counties Combined
+
+```{r}
+
+# Step 1: File paths
+Chaves_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Chaves Probate Data.xlsx"
+Colfax_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Colfax Probate Data.xlsx"
+Cibola_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Cibola Probate Data.xlsx"
+
+# Step 2: Read and fix date columns
+
+target_cols <- c(
+  "Decedent_Name", "County", "DOD", "Age_at_Death", "Sex", "Marital_Status", "No_Spouses", "No_Children", "No_Dec_Child",
+  "No_Step_Child", "No_Step_Dec", "No_Grandchild", "No_GreatGC", "Probate_Status", "Venue", "Case_No",
+  "Filing_Date", "Closed_Date", "Attorney", "PR_Name", "PR_Relation", "Will_Status", "Will_Date",
+  "Will_Scheme_NonRP", "Will_Source", "Heirs_Property", "Tax_Status_HP_1", "HP_2_Tax_Status", "HP_3_Tax_Status", "HP_4_Tax_Status", "HP_1_Value" , "HP_2_Value", "HP_3_Value", "HP_4_Value", "Tax_Sale", "2024_Value", "Foreclosure", "FC_Value", "Trusts"
+)
+
+read_and_fix_columns <- function(file_path) {
+  read_excel(file_path) |>
+    select(any_of(target_cols)) |>
+    mutate(across(
+      c(DOD, Filing_Date, Closed_Date, Will_Date),
+      ~ as.Date(.x)
+    )) |>
+    mutate(across(
+      all_of(numeric_cols),
+      ~ as.numeric(.)
+    ))
+}
+
+# Step 3: Read, merge, and convert numeric columns
+numeric_cols <- c("Age_at_Death", "No_Spouses", "No_Children", "No_Dec_Child", "No_Step_Child", "No_Step_Dec", "No_Grandchild", "No_GreatGC", "2024_Value","HP_1_Value", "HP_2_Value","HP_3_Value","HP_4_Value", "FC_Value")
+
+master2015 <- bind_rows(
+  read_and_fix_columns(Chaves_path),
+  read_and_fix_columns(Colfax_path),
+  read_and_fix_columns(Cibola_path)
+) |>
+  filter(!is.na(Decedent_Name) & str_trim(Decedent_Name) != "")
+
+# Step 5: Write to Excel
+writexl::write_xlsx(
+  master2015,
+  path = "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 MASTER Probate Data.xlsx"
+)
+
+```
+
+## New Variables
+
+### Age_Group
+
+```{r}
+
+master2015 <- master2015 |>
+ mutate(Age_Group = case_when(
+    Age_at_Death < 50 ~ "Under 50",
+    Age_at_Death >= 50 & Age_at_Death <= 59 ~ "50–59",
+    Age_at_Death >= 60 & Age_at_Death <= 69 ~ "60–69",
+    Age_at_Death >= 70 & Age_at_Death <= 79 ~ "70–79",
+    Age_at_Death >= 80 ~ "80 or Over"
+  ))
+```
+
+### Parental_Status
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    Parental_Status = case_when(
+      (No_Children + No_Dec_Child) >= 1 & (No_Step_Child + No_Step_Dec) == 0 ~ "Children Only, No Stepchildren",
+      (No_Children + No_Dec_Child) >= 1 & (No_Step_Child + No_Step_Dec) >= 1 ~ "Children & Stepchildren",
+      (No_Children + No_Dec_Child) == 0 & (No_Step_Child + No_Step_Dec) >= 1 ~ "Stepchildren Only",
+      (No_Children + No_Dec_Child) == 0 & (No_Step_Child + No_Step_Dec) == 0 ~ "No Children or Stepchildren",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+### Probate_Estate
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    Probate_Estate = grepl("informal|formal|federal", Probate_Status, ignore.case = TRUE)
+  )
+```
+
+### Pro_Se
+
+```{r}
+master2015 <- master2015 |>
+  mutate(Pro_Se = if_else(Attorney == "Pro Se", "Yes", "No"))
+```
+
+### Will_Age
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    DOD = as.Date(DOD, format = "%m/%d/%Y"),
+    Will_Date = as.Date(Will_Date, format = "%m/%d/%Y"),
+    Will_Age = as.numeric(DOD - Will_Date)
+  )
+```
+
+### Will_Timing
+
+Length of time between will execution and date of death (each as own variable)
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    Executed_Within_1_Week  = Will_Age <= 7,
+    Executed_Within_1_Month = Will_Age <= 30,
+    Executed_Within_1_Year  = Will_Age <= 365,
+    Executed_Within_3_Years = Will_Age <= 1095,
+    Executed_Within_5_Years = Will_Age <= 1825,
+    Executed_Within_10_years = Will_Age <= 3650,
+    Executed_10plus_Years_Before_Death = Will_Age >= 3650
+  )
+```
+
+### Will Source
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(Will_Source_Type = case_when(
+    Will_Source == "Unclear" ~ "Unclear",
+    Will_Source == "Form Will" ~ "Form Will",
+    Will_Source != "" & !is.na(Will_Source) ~ "Attorney/Firm",
+    TRUE ~ NA_character_
+  ))
+```
+
+### Probate_Delay
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    DOD = as.Date(DOD, format = "%m/%d/%Y"),
+    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"),
+    Probate_Delay = as.numeric(Filing_Date - DOD)
+  )
+```
+
+### Probate_Length
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(
+    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"),
+    Closed_Date = as.Date(Closed_Date, format = "%m/%d/%Y"),
+    Probate_Length = as.numeric(Closed_Date - Filing_Date)
+  )
+```
+
+### Property_Loss
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(Property_Loss = if_else(
+    Tax_Sale == "Yes" | Foreclosure == "Yes",
+    "Yes", "No"
+  ))
+
+```
+
+# Demographics of Dataset
+
+## Age
+
+### Age of all decedents in dataset
+
+```{r}
+
+age_distribution <- master2015 |>
+  #filter(!is.na(Age_at_Death)) |>
+  group_by(Age_Group) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(desc(Age_Group))  # optional for sorting groups nicely
+
+print(age_distribution)
+```
+
+### Median Age of all decedents in dataset
+
+```{r}
+
+age_data <- master2015$Age_at_Death
+median_age <- median(age_data, na.rm = TRUE)
+non_na_count <- sum(!is.na(age_data))
+na_count <- sum(is.na(age_data))
+
+cat("Median Age at Death:", median_age, "\n")
+cat("Number of values used (non-NA):", non_na_count, "\n")
+cat("Number of NA values dropped:", na_count, "\n")
+```
+
+## Sex
+
+### Sex breakdown for all decedents in dataset
+
+```{r}
+ sex_distribution <- master2015 |>
+  #filter(!is.na(Sex)) |>
+  group_by(Sex) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(sex_distribution)
+```
+
+## Marital Status
+
+### Marital status of all decedents in the dataset
+
+```{r}
+  
+  marital_status_distribution <- master2015 |>
+  #filter(!is.na(Marital_Status)) |>
+  group_by(Marital_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(marital_status_distribution)
+```
+
+## Parental Status
+
+### Parental status of all decedents in dataset
+
+\* Question for Tim: There are some people where it was clear they had children, but step status unclear. I think that's why a lot of NAs here. Ideas on ways to handle?
+
+```{r}
+
+  parental_status_distribution <- master2015 |>
+  #filter(!is.na(Parental_Status)) |>
+  group_by(Parental_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(parental_status_distribution)
+```
+
+# Likelihood of Probate
+
+## Gender
+
+### Proportion of decedents of each sex in overall dataset who have an associated probate estate (where probate status is known, not NA)
+
+```{r}
+
+#sex_probate_summary <- master2015 |>
+  #group_by(Sex) |>
+  #summarize(
+    #prop_with_probate = mean(Probate_Estate, na.rm = TRUE),
+    #count = n(),
+    #probate_count = sum(Probate_Estate == 1, na.rm = TRUE)
+  #) |>
+  #mutate (prop_with_probate = probate_count / count)
+
+#print(sex_probate_summary)
+
+
+sex_probate_summary <- master2015 |>
+  filter(!is.na(Probate_Estate)) |>  # Remove rows with NA in Probate_Estate
+  group_by(Sex) |>
+  summarize(
+    probate_count = sum(Probate_Estate == 1),
+    count_probate_known = n(),  # counting rows where Probate_Estate is known, not NA
+    prop_with_probate = probate_count / count_probate_known
+  )
+
+print(sex_probate_summary)
+
+```
+
+## Marital Status
+
+### Proportion of all decedents of each marital status with an associated probate estate (where probate status is known, not NA)
+
+```{r}
+  
+  marital_probate_summary <- master2015 |>
+  #filter(Marital_Status %in% c("married", "widowed", "divorced", "unmarried")) |>
+  filter(!is.na(Probate_Estate)) |>
+  group_by(Marital_Status) |>
+  summarize(
+    prop_with_probate = mean(Probate_Estate, na.rm = TRUE),
+    count_probate_known = n(),
+    probate_count = sum(Probate_Estate == 1, na.rm = TRUE)
+  ) 
+  
+  print (marital_probate_summary)
+```
+
+## Age
+
+### Proportion of Decedents of Each Age Group with An Associated Probate (out of decedents for whom probate status is known, not NA)
+
+```{r}
+
+#age_probate_summary <- master2015 |>
+  #summarize(
+    #prop_age_70plus_probate = mean(Probate_Estate[Age_at_Death >= 70], na.rm = TRUE),
+    #prop_age_60to69_probate = mean(Probate_Estate[Age_at_Death >= 60 & Age_at_Death <= 69], na.rm = TRUE),
+    #prop_age_50to59_probate = mean(Probate_Estate[Age_at_Death >= 50 & Age_at_Death <= 59], na.rm = TRUE),
+    #prop_age_49orless_probate= mean(Probate_Estate[Age_at_Death < 50], na.rm = TRUE)
+  #)
+
+#print(age_probate_summary)
+  
+  age_probate_summary <- master2015 |>
+  #filter(!is.na(Age_at_Death)) |>
+  filter(!is.na(Probate_Estate)) |>
+  group_by(Age_Group) |>
+  summarize(
+    count_probate_known = n(),
+    probate_count = sum(Probate_Estate, na.rm = TRUE),
+    prop_with_probate = mean(Probate_Estate, na.rm = TRUE)
+  ) |>
+  arrange(Age_Group)
+
+print(age_probate_summary)
+
+```
+
+## Parental_Status
+
+### Proportion of Decedents of Each Parental Status who Filed Probate (among those where probate status is known)
+
+```{r}
+
+  parental_probate_summary <- master2015 |>
+  group_by(Parental_Status) |>
+  filter(!is.na(Probate_Estate)) |>
+  summarize(
+    count_probate_known = n(),
+    n_with_probate = sum(Probate_Estate, na.rm = TRUE),
+    prop_with_probate = mean(Probate_Estate, na.rm = TRUE)
+  ) |>
+  arrange(Parental_Status)
+
+print(parental_probate_summary)
+
+```
+
+# Heirs Property
+
+## Overall
+
+```{r}
+
+heirs_property_distribution <- master2015 |>
+  group_by(Heirs_Property) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(desc(count))
+
+print(heirs_property_distribution)
+```
+
+## Sex
+
+### Proportion of each sex group holding heirs' property (where heirs' property status is known, not NA)
+
+```{r}
+
+heirs_prop_sex_summary <- master2015 |>
+  group_by(Sex) |>
+  filter(!is.na(Heirs_Property)) |>
+  summarize(
+    count_HP_known = n(),
+    HP_yes_count = sum(Heirs_Property == "Yes", na.rm = TRUE),
+    proportion = HP_yes_count / count_HP_known
+  )
+
+print(heirs_prop_sex_summary)
+```
+
+## Marital Status
+
+### Proportion of Decedents of each Marital Status with Heirs' Property (does not include JTROS where title has not been formally cleared yet)
+
+```{r}
+
+heirs_prop_marital_summary <- master2015 |>
+  group_by(Marital_Status) |>
+  filter(!is.na(Heirs_Property)) |>
+  summarize(
+    count_HP_known = n(),
+    HP_yes_count = sum(Heirs_Property == "Yes", na.rm = TRUE),
+    proportion = HP_yes_count / count_HP_known
+  )
+
+print(heirs_prop_marital_summary)
+```
+
+## Age
+
+### Proportion decedents in each age group with heirs' property (where HP status known)
+
+```{r}
+
+heirs_prop_age_summary <- master2015 |>
+  group_by(Age_Group) |>
+  filter(!is.na(Heirs_Property)) |>
+  summarize(
+    count_HP_known = n(),
+    HP_yes_count = sum(Heirs_Property == "Yes", na.rm = TRUE),
+    proportion = HP_yes_count / count_HP_known
+  )
+
+print(heirs_prop_age_summary)
+```
+
+### Parental Status
+
+### Proportion decedents in each parental status group with heirs' property (where HP status known)
+
+```{r}
+
+heirs_prop_parental_summary <- master2015 |>
+  group_by(Parental_Status) |>
+  filter(!is.na(Heirs_Property)) |>
+  summarize(
+    count_HP_known = n(),
+    HP_yes_count = sum(Heirs_Property == "Yes", na.rm = TRUE),
+    proportion = HP_yes_count / count_HP_known
+  )
+
+print(heirs_prop_parental_summary)
+```
+
+## Probate Status
+
+### Proportion of probate vs no probate groups with heirs' property (where heirs' property status is known)
+
+```{r}
+heirs_prop_probate_summary <- master2015 |>
+  filter(!is.na(Heirs_Property)) |>
+  group_by(Probate_Estate) |>
+  summarize(
+    count_HP_known = n(),
+    HP_yes_count = sum(Heirs_Property == "Yes", na.rm = TRUE),
+    proportion = HP_yes_count / count_HP_known
+  )
+
+print(heirs_prop_probate_summary)
+```
+
+### Proportion of heirs' property holders with probate (where probate status is known)
+
+```{r}
+
+heirs_prop_probate_summary_2 <- master2015 |>
+  filter(!is.na(Probate_Estate)) |>
+  group_by(Heirs_Property) |>
+  summarize(
+    HP_count_probate_known = n(),
+    probate_count = sum(Probate_Estate == TRUE, na.rm = TRUE),
+    proportion_with_probate = probate_count / HP_count_probate_known
+  )
+
+print(heirs_prop_probate_summary_2)
+
+```
+
+## Tax Delinquency
+
+### Share of decedents with heirs property who also have at least one heirs property parcel in tax delinquency status (where Tax_Delinquency status is known)
+
+```{r}
+
+master2015 <- master2015 |>
+  mutate(Tax_Delinquency = case_when(
+    Tax_Status_HP_1 == "Delinquent" |
+    HP_2_Tax_Status == "Delinquent" |
+    HP_3_Tax_Status == "Delinquent" |
+    HP_4_Tax_Status == "Delinquent" ~ "Yes",
+    TRUE ~ "No"
+  ))
+
+```
+
+```{r}
+
+
+heirs_tax_delinquency_summary <- master2015 |>
+  #filter(Heirs_Property %in% c("Yes", "No")) |>
+  filter(!is.na(Tax_Delinquency)) |>
+  group_by(Heirs_Property) |>
+  summarize(
+    total_tax_known = n(),
+    delinquent = sum(Tax_Delinquency == "Yes", na.rm = TRUE),
+    prop_delinquent = delinquent / total_tax_known
+  )
+
+print(heirs_tax_delinquency_summary)
+
+```
+
+## Median Value
+
+### Median Value of all heirs' property parcels identified in the dataset
+
+```{r}
+
+#Step 1 - treat any "0" Values as NA
+
+master2015 <- master2015 |>
+  mutate(
+    HP_1_Value = ifelse(HP_1_Value == 0, NA, HP_1_Value),
+    HP_2_Value = ifelse(HP_2_Value == 0, NA, HP_2_Value),
+    HP_3_Value = ifelse(HP_3_Value == 0, NA, HP_3_Value),
+    HP_4_Value = ifelse(HP_4_Value == 0, NA, HP_4_Value)
+  )
+  
+# Step 2: Combine the four columns into one string column
+master2015 <- master2015 |>
+  mutate(
+    Combined_HP_Values = paste(HP_1_Value, HP_2_Value, HP_3_Value, HP_4_Value, sep = ";")
+  )
+
+# Step 2: Split the Combined_HP_Values, turn into numeric, and calculate the median
+all_hp_values <- master2015$Combined_HP_Values |>
+  str_split(";") |>
+  unlist() |>
+  as.numeric()
+
+# Step 3: Take the median, removing NAs
+hp_median <- median(all_hp_values, na.rm = TRUE)
+
+print(hp_median)
+
+```
+
+# Tax Sale
+
+## Overall
+
+### Proportion of all decedents with tax sale after death
+
+```{r}
+tax_sale_distribution <- master2015 |>
+  mutate(Tax_Sale = tolower(Tax_Sale)) |> 
+  group_by(Tax_Sale) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(desc(count))
+
+print(tax_sale_distribution)
+```
+
+## Sex
+
+### Proportion of each sex with a tax sale after death (where tax sale is known)
+
+```{r}
+
+TS_sex_summary <- master2015 |>
+  group_by(Sex) |>
+  filter(!is.na(Tax_Sale)) |>
+  summarize(
+    total_TS_known = n(),
+    TS_count = sum(Tax_Sale == "Yes", na.rm = TRUE),
+    proportion = TS_count / total_TS_known
+  )
+
+print(TS_sex_summary)
+```
+
+## Age
+
+### Proportion of each age group with tax sale after death (among those where tax sale status is known)
+
+```{r}
+
+TS_age_summary <- master2015 |>
+  group_by(Age_Group) |>
+  filter(!is.na(Tax_Sale)) |>
+  summarize(
+    total_TS_known = n(),
+    TS_count = sum(Tax_Sale == "Yes", na.rm = TRUE),
+    prop_with_TS = TS_count / total_TS_known
+  )
+
+print(TS_age_summary)
+```
+
+## Marital Status
+
+### Proportion of Each marital status group with a tax sale after death (tax sale status known)
+
+```{r}
+
+TS_marital_summary <- master2015 |>
+  group_by(Marital_Status) |>
+  filter(!is.na(Tax_Sale)) |>
+  summarize(
+    total_TS_known = n(),
+    TS_count = sum(Tax_Sale == "Yes", na.rm = TRUE),
+    prop_with_TS = TS_count / total_TS_known
+  )
+
+print(TS_marital_summary)
+```
+
+## Parental Status
+
+### Proportion of Each parental status group with a tax sale after death (tax sale status known)
+
+```{r}
+TS_parental_summary <- master2015 |>
+  group_by(Parental_Status) |>
+  filter(!is.na(Tax_Sale)) |>
+  summarize(
+    total_TS_known = n(),
+    TS_count = sum(Tax_Sale == "Yes", na.rm = TRUE),
+    prop_with_TS = TS_count / total_TS_known
+  )
+
+print(TS_parental_summary)
+```
+
+## Probate Status
+
+### Proportion of each probate status with a tax sale following death (tax sale status known)
+
+```{r}
+
+TS_probate_summary <- master2015 |>
+  group_by(Probate_Estate) |>
+  filter(!is.na(Tax_Sale)) |>
+  summarize(
+    total_TS_known = n(),
+    TS_count = sum(Tax_Sale == "Yes", na.rm = TRUE),
+    prop_with_TS = TS_count / total_TS_known
+  )
+
+print(TS_probate_summary)
+```
+
+### Proportion of those with Tax Sale Who Had a Probate (probate status known)
+
+```{r}
+
+tax_sale_probate_summary_2 <- master2015 |>
+  group_by(Tax_Sale) |>
+  filter(!is.na(Probate_Estate)) |>
+  mutate(Tax_Sale = tolower(Tax_Sale)) |> 
+  summarize(
+    TS_count_probate_known = n(),
+    probate_count = sum(Probate_Estate == TRUE, na.rm = TRUE),
+    prop_with_probate = probate_count / TS_count_probate_known
+  )
+
+print(tax_sale_probate_summary_2)
+```
+
+## Median Value
+
+```{r}
+
+TS_value_data <- master2015$`2024_Value`
+median_value_TS <- median(TS_value_data, na.rm = TRUE)
+non_na_count <- sum(!is.na(TS_value_data))
+na_count <- sum(is.na(TS_value_data))
+
+cat("Median TS Property Value:", median_value_TS, "\n")
+cat("Number of values used (non-NA):", non_na_count, "\n")
+cat("Number of NA values dropped:", na_count, "\n")
+```
+
+# Foreclosure
+
+## Overall
+
+### Proportion of all decedents with foreclosure after death
+
+```{r}
+FC_distribution <- master2015 |>
+  group_by(Foreclosure) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(desc(count))
+
+print(FC_distribution)
+```
+
+\*There are no decedents with "NA" foreclosure value - did not filter foreclosure NAs from following categories
+
+## Age
+
+Proportion of each age group with foreclosure after death
+
+```{r}
+FC_age_summary <- master2015 |>
+  group_by(Age_Group) |>
+  summarize(
+    total = n(),
+    FC_yes = sum(Foreclosure == "Yes", na.rm = TRUE),
+    proportion = FC_yes / total
+  )
+
+print(FC_age_summary)
+```
+
+## Sex
+
+### Proportion of Each Sex Group with a Foreclosure After Death
+
+```{r}
+
+FC_sex_summary <- master2015 |>
+  group_by(Sex) |>
+  summarize(
+    total = n(),
+    FC_yes = sum(Foreclosure == "Yes", na.rm = TRUE),
+    proportion = FC_yes / total
+  )
+
+print(FC_sex_summary)
+```
+
+## Marital Status
+
+### Proportion of each marital status group with a foreclosure following death
+
+```{r}
+
+FC_marital_summary <- master2015 |>
+  group_by(Marital_Status) |>
+  summarize(
+    total = n(),
+    FC_yes = sum(Foreclosure == "Yes", na.rm = TRUE),
+    proportion = FC_yes / total
+  )
+
+print(FC_marital_summary)
+```
+
+## Parental Status
+
+### Proportion of each parental status group with a foreclosure following death
+
+```{r}
+
+FC_parental_summary <- master2015 |>
+  group_by(Parental_Status) |>
+  summarize(
+    total = n(),
+    FC_yes = sum(Foreclosure == "Yes", na.rm = TRUE),
+    proportion = FC_yes / total
+  )
+
+print(FC_parental_summary)
+```
+
+## Probate Status
+
+### Proportion of Each Probate Status to have foreclosure after death
+
+```{r}
+
+FC_probate_summary <- master2015 |>
+  group_by(Probate_Estate) |>
+  summarize(
+    total = n(),
+    FC_yes = sum(Foreclosure == "Yes", na.rm = TRUE),
+    proportion = FC_yes / total
+  )
+
+print(FC_probate_summary)
+
+```
+
+### Proportion of those with/without foreclosure who had probate (probate status known)
+
+```{r}
+FC_probate_summary_2 <- master2015 |>
+  group_by(Foreclosure) |>
+  filter(!is.na(Probate_Estate)) |>
+  summarize(
+    count_FC_probate_known = n(),
+    probate_count = sum(Probate_Estate == TRUE, na.rm = TRUE),
+    proportion_with_probate = probate_count / count_FC_probate_known
+  )
+
+print(FC_probate_summary_2)
+```
+
+### Median Value
+
+```{r}
+FC_value_data <- master2015$FC_Value
+median_value_FC <- median(FC_value_data, na.rm = TRUE)
+non_na_count <- sum(!is.na(FC_value_data))
+na_count <- sum(is.na(FC_value_data))
+
+cat("Median FC Property Value:", median_value_FC, "\n")
+cat("Number of values used (non-NA):", non_na_count, "\n")
+cat("Number of NA values dropped:", na_count, "\n")
+```
+
+# Combined Property Loss
+
+## Overall
+
+### Share of decedents with either a tax sale, a foreclosure, or both
+
+```{r}
+
+# Calculate the proportion of observations with "Yes" in the Heirs_Property column
+prop_property_loss <- master2015 |>
+  summarize(proportion = mean(Property_Loss == "Yes", na.rm = TRUE)) |>
+  pull(proportion)
+
+# Print the proportion
+print(prop_property_loss)
+```
+
+# Probate Estates
+
+## Dataset
+
+```{r}
+
+# Filter for rows where Probate_Status includes "informal", "formal", or "federal"
+master_2015_probates <- master2015 |>
+  filter(str_detect(tolower(Probate_Status), "informal|formal|federal"))
+
+# View the filtered data
+print(master_2015_probates)
+```
+
+## Age
+
+### Breakdown of age groups within probate estates
+
+```{r}
+
+probate_age_distribution <- master_2015_probates |>
+  #filter(!is.na(Age_at_Death)) |>
+  group_by(Age_Group) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(desc(Age_Group))  
+
+print(probate_age_distribution)
+```
+
+### Median age of probate estates
+
+```{r}
+median_age <- median(master_2015_probates$Age_at_Death, na.rm = TRUE)
+print(median_age)
+
+probate_age_data <- master_2015_probates$Age_at_Death
+probate_median_age <- median(probate_age_data, na.rm = TRUE)
+non_na_count <- sum(!is.na(probate_age_data))
+na_count <- sum(is.na(probate_age_data))
+
+cat("Median Age at Death:", probate_median_age, "\n")
+cat("Number of values used (non-NA):", non_na_count, "\n")
+cat("Number of NA values dropped:", na_count, "\n")
+```
+
+## Sex
+
+### Probates broken down by sex
+
+```{r}
+ probate_sex_distribution <- master_2015_probates |>
+  #filter(!is.na(Sex)) |>
+  group_by(Sex) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(probate_sex_distribution)
+```
+
+## Marital Status
+
+### Breakdown of probate estates by marital status
+
+```{r}
+
+ marital_status_distribution_probate <- master_2015_probates |>
+  #filter(!is.na(Marital_Status)) |>
+  group_by(Marital_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(marital_status_distribution_probate)
+```
+
+## Parental Status
+
+### Breakdown of probate estates by parental status
+
+```{r}
+
+  probate_parental_status_distribution <- master_2015_probates |>
+  #filter(!is.na(Parental_Status)) |>
+  group_by(Parental_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(probate_parental_status_distribution)
+```
+
+## Testacy
+
+### Proportion of testate estates
+
+```{r}
+
+ probate_testacy_distribution <- master_2015_probates |>
+  #filter(!is.na(Will_Status)) |>
+  group_by(Will_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(probate_testacy_distribution)
+```
+
+#### Median Age Testate v. Intestate
+
+```{r}
+
+median_age_by_testacy <- master_2015_probates |>
+  filter(Will_Status %in% c("Testate", "Intestate")) |>
+  group_by(Will_Status) |>
+  summarize(median_age = median(Age_at_Death, na.rm = TRUE))
+
+print(median_age_by_testacy)
+```
+
+### Likelihood of Testacy
+
+#### Age
+
+##### Share of probate estates of each age group that are testate (testacy status known)
+
+```{r}
+  age_testacy_summary <- master_2015_probates |>
+  #filter(!is.na(Age_at_Death)) |>
+  group_by(Age_Group) |>
+  filter(!is.na(Will_Status)) |>
+  summarize(
+    count_testacy_known = n(),
+    n_testate = sum(Will_Status == "Testate", na.rm = TRUE),
+    prop_testate = mean(Will_Status == "Testate", na.rm = TRUE)
+  ) |>
+  arrange(Age_Group)
+
+print(age_testacy_summary)
+```
+
+#### Marital Status
+
+##### Share of probate estates of each marital status that are testate (testacy status known)
+
+```{r}
+
+  marital_testacy_summary <- master_2015_probates |>
+  #filter(!is.na(Marital_Status)) |>
+  group_by(Marital_Status) |>
+  filter(!is.na(Will_Status)) |>
+  summarize(
+    count_testacy_known = n(),
+    n_testate = sum(Will_Status == "Testate", na.rm = TRUE),
+    prop_testate = mean(Will_Status == "Testate", na.rm = TRUE)
+  ) |>
+  arrange(Marital_Status)
+
+print(marital_testacy_summary)
+```
+
+#### Sex
+
+##### Share of probate estates of each sex that are testate (testacy status known)
+
+```{r}
+
+  sex_testacy_summary <- master_2015_probates |>
+  #filter(!is.na(Age_at_Death)) |>
+  group_by(Sex) |>
+  filter(!is.na(Will_Status)) |>
+  summarize(
+    count_testacy_known = n(),
+    n_testate = sum(Will_Status == "Testate", na.rm = TRUE),
+    prop_testate = mean(Will_Status == "Testate", na.rm = TRUE)
+  ) |>
+  arrange(Sex)
+
+print(sex_testacy_summary)
+```
+
+#### Parental Status
+
+##### Share of probate estates of each parental status that are testate (testacy status known)
+
+```{r}
+
+ parental_testacy_summary <- master_2015_probates |>
+  #filter(!is.na(Parental_Status)) |>
+  filter(!is.na(Will_Status)) |>
+  group_by(Parental_Status) |>
+  summarize(
+    count_testacy_known = n(),
+    n_testate = sum(Will_Status == "Testate", na.rm = TRUE),
+    prop_testate = mean(Will_Status == "Testate", na.rm = TRUE)
+  ) |>
+  arrange(Parental_Status)
+
+print(parental_testacy_summary)
+```
+
+## Representation
+
+### Overall
+
+#### Proportion of probate estates proceeding pro se (excluding federal, where representation not typically used)
+
+```{r}
+  probate_representation_distribution <- master_2015_probates |>
+  #filter(!is.na(Pro_Se)) |>
+  filter(Probate_Status != "federal") |>
+  group_by(Pro_Se) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(probate_representation_distribution)
+```
+
+### Testacy & Representation
+
+#### Proportion of Pro Se Probates that are testate/intestate (testacy known)
+
+```{r}
+#pro_se_by_testacy <- master_2015_probates |>
+  #filter(!is.na(Pro_Se)) |>
+  #filter(Attorney == "Pro Se") |>
+  #group_by(Will_Status) |>
+  #summarize(count = n()) |>
+  #mutate(prop_of_total = count / sum(count))
+
+#print(pro_se_by_testacy)
+
+ pro_se_testacy_summary <- master_2015_probates |>
+  #filter(!is.na(Parental_Status)) |>
+  filter(!is.na(Will_Status)) |>
+  group_by(Pro_Se) |>
+  summarize(
+    count_testacy_known = n(),
+    n_testate = sum(Will_Status == "Testate", na.rm = TRUE),
+    prop_testate = mean(Will_Status == "Testate", na.rm = TRUE)
+  ) |>
+  arrange(Pro_Se)
+
+print(pro_se_testacy_summary)
+
+
+
+```
+
+#### Proportion of Intestate & Testate Estates that Are Pro Se (rep status known)
+
+```{r}
+
+#probate_representation_by_testacy <- master_2015_probates |>
+  #filter(Probate_Status != "federal", !is.na(Pro_Se), !is.na(Will_Status)) |>
+  #group_by(Will_Status, Pro_Se) |>
+  #summarize(count = n(), .groups = "drop") |>
+  #group_by(Will_Status) |>
+  #mutate(prop_within_will_status = count / sum(count))
+
+#print(probate_representation_by_testacy)
+
+
+ testacy_pro_se_summary <- master_2015_probates |>
+  #filter(!is.na(Will_Status)) |>
+  filter(!is.na(Pro_Se)) |>
+  group_by(Will_Status) |>
+  summarize(
+    count_rep_known = n(),
+    n_pro_se = sum(Pro_Se == "Yes", na.rm = TRUE),
+    prop_pro_se = mean(Pro_Se == "Yes", na.rm = TRUE)
+  ) |>
+  arrange(Will_Status)
+
+print(testacy_pro_se_summary)
+```
+
+## Contest Rate
+
+### Proportion of Formal Probates (leaving out federal probates, where probate types are different)
+
+```{r}
+probate_type_distribution <- master_2015_probates |>
+  #filter(!is.na(Probate_Status)) |>
+  filter(Probate_Status != "federal") |>
+  group_by(Probate_Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(probate_type_distribution)
+```
+
+## Probate Timing
+
+### Median Probate Length
+
+Median time between filing and closed date (among those estates that had both values
+
+```{r}
+
+median_probate_length <- median(master_2015_probates$Probate_Length, na.rm = TRUE)
+print(median_probate_length)
+```
+
+#### Share of probates with no closing date
+
+```{r}
+
+# number with no closed date
+sum(is.na(master_2015_probates$Closed_Date) | master_2015_probates$Closed_Date %in% "")
+
+#proportion
+sum(is.na(master_2015_probates$Closed_Date) | master_2015_probates$Closed_Date %in% "") / nrow(master_2015_probates)
+
+
+
+```
+
+### Median Probate Delay
+
+```{r}
+
+median_probate_delay <- median(master_2015_probates$Probate_Delay, na.rm = TRUE)
+print(median_probate_delay)
+```
+
+### Probate Length by Testacy
+
+```{r}
+ probate_length_by_testacy <- master_2015_probates %>%
+  filter(Will_Status %in% c("Testate", "Intestate")) %>%
+  group_by(Will_Status) %>%
+  summarize(median_probate_length = median(Probate_Length, na.rm = TRUE))
+
+print(probate_length_by_testacy)
+```
+
+### Probate Delay by Testacy
+
+```{r}
+
+ probate_delay_by_testacy <- master_2015_probates %>%
+  filter(Will_Status %in% c("Testate", "Intestate")) %>%
+  group_by(Will_Status) %>%
+  summarize(median_probate_delay = median(Probate_Delay, na.rm = TRUE))
+
+print(probate_delay_by_testacy)
+```
+
+# Wills
+
+\*\*Question for Tim: less sure I'm understanding how NAs are being treated/should be treated in this section
+
+## Dataset
+
+```{r}
+
+master_wills <- master2015 |>
+  filter(Will_Status == "Testate", na.rm = TRUE)
+
+writexl::write_xlsx(
+  master_wills,
+  path = "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 MASTER Wills Data.xlsx"
+)
+```
+
+## Will Age
+
+### Median Will Age
+
+```{r}
+
+median_will_age <- median(master_2015_probates$Will_Age, na.rm = TRUE)
+
+print(median_will_age)
+```
+
+### Will Age Distribution
+
+Proportion of wills executed within each time frame (will date known)
+
+```{r}
+
+#age_distribution_wills <- master_wills |>
+  #group_by(Will_Timing) |>
+  #summarize(count = n()) |>
+  #mutate(prop_of_total = count / sum(count)) |>
+  #arrange(desc(Will_Timing))
+
+#print(age_distribution_wills)
+
+
+#will_timing_distribution <- master_wills |>
+  #pivot_longer(
+    #cols = starts_with("Executed_"), 
+    #names_to = "Will_Timing", 
+    #values_to = "Included"
+  #) |>
+  #filter(Included == TRUE) |>
+  #group_by(Will_Timing) |>
+  #summarize(count = n()) |>
+  #mutate(prop_of_total = count / sum(count)) |>
+  #arrange(desc(prop_of_total))
+
+#print(will_timing_distribution)
+
+
+will_timing_distribution <- master_wills |>
+  
+  pivot_longer(
+    cols = starts_with("Executed_"), 
+    names_to = "Will_Timing", 
+    values_to = "Included"
+  ) |>
+  filter(Included == TRUE) |>
+  group_by(Will_Timing) |>
+  filter(!is.na(Will_Date)) |>
+  summarize(count = n()) |>
+  mutate(
+    total_rows = nrow(master_wills),  
+    prop_of_total = count / total_rows
+  ) |>
+  arrange(desc(prop_of_total))
+
+will_timing_distribution <- will_timing_distribution |>
+  mutate(Will_Timing = abbreviate(Will_Timing, minlength = 8))
+
+print(will_timing_distribution)
+
+
+
+```
+
+## Will Scheme Distribution
+
+Proportion of wills with each scheme type
+
+```{r}
+
+#proportion_pourover <- master_wills |>
+  #summarize(proportion = mean(Will_Scheme_NonRP == 2, na.rm = TRUE)) |>
+  #pull(proportion)
+
+#print(proportion_pourover)
+
+will_scheme_distribution <- master_wills |>
+  #filter(!is.na(Will_Scheme_NonRP)) |>
+  group_by(Will_Scheme_NonRP) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count)) |>
+  arrange(Will_Scheme_NonRP)
+
+print(will_scheme_distribution)
+
+```
+
+## Will Sources
+
+### Will Source Type Distribution
+
+Proportion of wills of each source type
+
+```{r}
+will_source_type_distribution <- master_wills |>
+  #filter(!is.na(Will_Source_Type)) |>
+  group_by(Will_Source_Type) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(will_source_type_distribution)
+
+
+```
+
+### Will Source/Drafter Distribution
+
+Proportion of wills drafted by an attorney or firm completed by each individual attorney/firm in dataset
+
+```{r}
+
+will_drafter_distribution <- master_wills |>
+  #filter(!is.na(Will_Source_Type)) |>
+  filter(Will_Source_Type == "Attorney/Firm") |>
+  group_by(Will_Source) |>
+  summarize(source_count = n()) |>
+  mutate(prop_of_total = source_count / sum(count)) |>
+  arrange(desc(source_count))
+
+
+print(will_drafter_distribution)
+```
+
+# Probate Attorneys
+
+## Datasets
+
+```{r}
+attorneys_2015 <- read_xlsx ("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Attorneys/Attorney Data 2015.xlsx")
+```
+
+## New Variables
+
+### Local_Attorney
+
+```{r}
+attorneys_2015 <- attorneys_2015 |>
+  mutate(Local_Atty = Primary_Address_County == Study_County)
+```
+
+### Specialist
+
+```{r}
+
+attorneys_2015 <- attorneys_2015 |>
+  mutate(
+    Specialist = case_when(
+      is.na(Primary_Practice_Field) | Primary_Practice_Field == "" ~ NA,
+      str_detect(Primary_Practice_Field, "Estate Planning/Taxation/Probate Wills") &
+        (str_count(Primary_Practice_Field, ";") + 1) <= 3 ~ TRUE,
+      TRUE ~ FALSE
+    )
+  )
+
+```
+
+### **Years_in_Practice**
+
+```{r}
+
+Study_Date <- as.Date("2015-01-01")
+
+attorneys_2015 <- attorneys_2015 |>
+  mutate(
+    Admission_Date = as.Date(Admission_Date, format = "%m/%d/%Y"),
+    Study_Date = as.Date(Study_Date, format = "%m/%d/%Y"),
+    Years_in_Practice = as.numeric((Study_Date - Admission_Date) / 365)
+  )
+```
+
+## Merging Probate and Attorney Data
+
+```{r}
+
+
+probates_2015_attorney_info <- master_2015_probates %>%
+  left_join(attorneys_2015, by = c("Attorney" = "Atty_Name"))
+
+writexl::write_xlsx(
+  probates_2015_attorney_info,
+  path = "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 MASTER Probate Data + Attorney Info.xlsx"
+)
+
+
+```
+
+## Local Attorney Rate
+
+Proportion of attorneys that are local (located in the same county as county of study)
+
+```{r}
+local_atty_distribution <- attorneys_2015 |>
+  #filter(!is.na(Local_Atty)) |>
+  filter(Atty_Name != "Pro Se") |>
+  group_by(Local_Atty) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(local_atty_distribution)
+```
+
+## Specialist Rate
+
+Proportion of attorneys in study county that are specialists
+
+```{r}
+  specialist_distribution <- attorneys_2015 |>
+  #filter(!is.na(Specialist)) |>
+  filter(Atty_Name != "Pro Se") |>
+  group_by(Specialist) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(specialist_distribution)
+```
+
+\*Question for Tim - wanted to try to merge datasets to figure out proportion of people who used specialty representation (not just proportion of attorneys who were specialists) - suggestions? I think high number of "NA" doing it this way is that some people have multiple attorneys listed in a case (different parties, changing attorneys, etc.)
+
+```{r}
+
+  specialist_distribution_cumulative <- probates_2015_attorney_info |>
+  #filter(!is.na(Specialist)) |>
+  filter(Attorney != "Pro Se") |>
+  group_by(Specialist) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(specialist_distribution_cumulative)
+```
+
+## Years in Practice
+
+### Median Years in Practice
+
+```{r}
+median_years_in_practice <- median(attorneys_2015$Years_in_Practice, na.rm = TRUE)
+print(median_years_in_practice)
+```
+
+## Current Status
+
+```{r}
+
+ status_distribution <- attorneys_2015 |>
+  #filter(!is.na(Status)) |>
+  filter(Atty_Name != "Pro Se") |>
+  group_by(Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(status_distribution)
+```
+
+# Drafting Attorneys
+
+## Dataset
+
+```{r}
+
+will_sources_2015 <- read_xlsx ("/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Wills/Will Sources Data 2015.xlsx")
+```
+
+## New Variables
+
+### Single_Drafter
+
+\*as compared to situations where the firm was identified, but not the attorney
+
+```{r}
+
+will_sources_2015 <- will_sources_2015 |>
+  mutate(Single_Drafter = Primary_Practice_Field != "")
+```
+
+### Local_Drafter
+
+```{r}
+will_sources_2015 <- will_sources_2015 |>
+  mutate(Local_Drafter = Primary_Practice_Address == Study_County)
+```
+
+### Specialist_Drafter
+
+```{r}
+will_sources_2015 <- will_sources_2015 |>
+  mutate(
+    Specialist = case_when(
+      is.na(Primary_Practice_Field) | Primary_Practice_Field == "" ~ NA,
+      str_detect(Primary_Practice_Field, "Estate Planning/Taxation/Probate Wills") &
+        (str_count(Primary_Practice_Field, ";") + 1) <= 3 ~ TRUE,
+      TRUE ~ FALSE
+    )
+  )
+```
+
+## Local Drafter Distribution
+
+```{r}
+local_drafter_distribution <- will_sources_2015 |>
+  # filter(!is.na(Local_Drafter)) |>
+  filter(!Drafting_Atty %in% c("Form Will", "Out of State", "Unclear")) |>
+  group_by(Local_Drafter) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(local_drafter_distribution)
+
+```
+
+## Specialist Rate
+
+```{r}
+  specialist_distribution_drafters <- will_sources_2015 |>
+  #filter(!is.na(Specialist)) |>
+  filter(Single_Drafter == "TRUE") |>
+  group_by(Specialist) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(specialist_distribution_drafters)
+```
+
+## Status Distribution
+
+```{r}
+  status_distribution_drafters <- will_sources_2015 |>
+  #filter(!is.na(Status)) |>
+  filter(Single_Drafter == "TRUE") |>
+  group_by(Status) |>
+  summarize(count = n()) |>
+  mutate(prop_of_total = count / sum(count))
+
+print(status_distribution_drafters)
+```
+
+## Years in Practice (as of Will Execution)
+
+-   Question for Tim - similar to above, I'd like to merge to figure out median years in practice of drafters at the time will was executed. Suggestions?
