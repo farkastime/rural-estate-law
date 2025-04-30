@@ -13,6 +13,7 @@ editor: visual
 library(readxl)
 library(dplyr)
 library(stringr) # NOTE: adding packages one by one as needed
+library(purrr)
 # library(writexl)
 ```
 
@@ -228,13 +229,32 @@ master2015 <- master2015 |>
 
 # Demographics of Dataset
 
+NOTE: You could probably tidy things up by iterating over the demographic variables, and applying the same function, since you're doing the same thing over and over again. Like this: 
+
+```{r}
+group_vars <- c("Age_Group", "Sex")
+demog_sums <- purrr::map(group_vars, \(var) 
+  master2015 %>%
+    group_by(across(all_of(var))) |>
+    summarize(count = n()) |>
+    mutate(prop_of_total = count / sum(count)) 
+) %>% 
+set_names(group_vars)
+
+print(demog_sums)
+```
+
 ## Age
 
+```{r}
+
+```
 ### Age of all decedents in dataset
 
 ```{r}
 
 age_distribution <- master2015 |>
+  # NOTE: Looks good. I would probably filter out the NAs, but it depends on what you want the result to mean. 
   #filter(!is.na(Age_at_Death)) |>
   group_by(Age_Group) |>
   summarize(count = n()) |>
@@ -269,6 +289,8 @@ cat("Number of NA values dropped:", na_count, "\n")
   summarize(count = n()) |>
   mutate(prop_of_total = count / sum(count))
 
+# NOTE: Looks good. 
+
 print(sex_distribution)
 ```
 
@@ -293,6 +315,8 @@ print(marital_status_distribution)
 
 \* Question for Tim: There are some people where it was clear they had children, but step status unclear. I think that's why a lot of NAs here. Ideas on ways to handle?
 
+NOTE: Not really ... you'll have to decide how to handle these situations. Like what the different patterns of NAs mean. If you can safely impute 0 for every NA that would be great. If not, can / should you just remove the rows with at least 1 NA? All 4 NA? A particular pattern of NAs? If you're doing inferential statistics downstream, it can be better to impute values than just delete, but how you do that is a whole topic. There appear to be a lot of cases where all values are NA (see analysis below). 
+
 ```{r}
 
   parental_status_distribution <- master2015 |>
@@ -304,8 +328,20 @@ print(marital_status_distribution)
 print(parental_status_distribution)
 ```
 
+```{r}
+# NOTE: look at distribution of how many NAs, but the pattern across columns is important too. 
+master2015 |>
+  select(No_Children, No_Dec_Child, No_Step_Child, No_Step_Dec) |> #View()
+  rowwise() |>
+  mutate(na_count = sum(is.na(c_across(everything())))) |> #View()
+  group_by(na_count) |>
+  summarize(count = n()) |> 
+  arrange(na_count) |> View()
+```
+
 # Likelihood of Probate
 
+NOTE: Same as above here, you can iterate over the column names and apply the same function to each grouping variable of interest. 
 ## Gender
 
 ### Proportion of decedents of each sex in overall dataset who have an associated probate estate (where probate status is known, not NA)
@@ -328,7 +364,10 @@ sex_probate_summary <- master2015 |>
   filter(!is.na(Probate_Estate)) |>  # Remove rows with NA in Probate_Estate
   group_by(Sex) |>
   summarize(
+    # NOTE: i think you have 0 NAs in this column, but if your sum function doesn't handle the condition where there are. 
+    # NOTEL: you can drop the "== 1" here, since Probate_Estate is already TRUE/FALSE you can just sum it directly. 
     probate_count = sum(Probate_Estate == 1),
+    # NOTE: i tested this and it just counts the number of records in the group, including those with NAs. Notice you don't "focus" on Probate_Estate column here. But you have no NAs, so i think it's fine.  
     count_probate_known = n(),  # counting rows where Probate_Estate is known, not NA
     prop_with_probate = probate_count / count_probate_known
   )
