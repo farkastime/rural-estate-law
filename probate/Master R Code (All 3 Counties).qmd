@@ -6,13 +6,14 @@ editor: visual
 
 ```{r}
 #| label: load libraries
-library(tidyverse)
-library(haven)
-library(janitor)
-library(ggplot2)
+# # library(tidyverse)
+# library(haven)
+# library(janitor)
+# library(ggplot2)
 library(readxl)
 library(dplyr)
-library(writexl)
+library(stringr) # NOTE: adding packages one by one as needed
+# library(writexl)
 ```
 
 # Master Dataset - All Counties Combined
@@ -20,9 +21,10 @@ library(writexl)
 ```{r}
 
 # Step 1: File paths
-Chaves_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Chaves Probate Data.xlsx"
-Colfax_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Colfax Probate Data.xlsx"
-Cibola_path <- "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 Cibola Probate Data.xlsx"
+# NOTE: use snake case or camelCase
+Chaves_path <- "./data/2015 Chaves Probate Data.xlsx"
+Colfax_path <- "./data/2015 Colfax Probate Data.xlsx"
+Cibola_path <- "./data/2015 Cibola Probate Data.xlsx"
 
 # Step 2: Read and fix date columns
 
@@ -45,15 +47,18 @@ read_and_fix_columns <- function(file_path) {
       ~ as.numeric(.)
     ))
 }
+# NOTE: excellent! pretty sure there's a flexible col_types argument you can leverage would be a bit tidier, but this works well.
 
 # Step 3: Read, merge, and convert numeric columns
 numeric_cols <- c("Age_at_Death", "No_Spouses", "No_Children", "No_Dec_Child", "No_Step_Child", "No_Step_Dec", "No_Grandchild", "No_GreatGC", "2024_Value","HP_1_Value", "HP_2_Value","HP_3_Value","HP_4_Value", "FC_Value")
 
+# NOTE: look at purrr::map if you want to make this more concise, but this is great. excellent value of the function you wrote. 
 master2015 <- bind_rows(
   read_and_fix_columns(Chaves_path),
   read_and_fix_columns(Colfax_path),
   read_and_fix_columns(Cibola_path)
 ) |>
+# NOTE: is this the only filter you want to apply here? this is a good opportunity to prune things down to the minimal set.
   filter(!is.na(Decedent_Name) & str_trim(Decedent_Name) != "")
 
 # Step 5: Write to Excel
