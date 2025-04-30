@@ -22,6 +22,7 @@ library(stringr) # NOTE: adding packages one by one as needed
 
 # Step 1: File paths
 # NOTE: use snake case or camelCase
+setwd("probate") # NOTE: just for me
 Chaves_path <- "./data/2015 Chaves Probate Data.xlsx"
 Colfax_path <- "./data/2015 Colfax Probate Data.xlsx"
 Cibola_path <- "./data/2015 Cibola Probate Data.xlsx"
@@ -59,30 +60,45 @@ master2015 <- bind_rows(
   read_and_fix_columns(Cibola_path)
 ) |>
 # NOTE: is this the only filter you want to apply here? this is a good opportunity to prune things down to the minimal set.
+# NOTE: operator precedence (& vs ! and =) is important. i think this does what you want. just be careful. use parentheses when unsure. 
   filter(!is.na(Decedent_Name) & str_trim(Decedent_Name) != "")
 
 # Step 5: Write to Excel
 writexl::write_xlsx(
   master2015,
-  path = "/Users/sophierane/Library/CloudStorage/OneDrive-UniversityofNewMexico/Rural Estate Planning Fellowship Research/NM Probate Research/Decedents/CSV Data Files/2015 MASTER Probate Data.xlsx"
+  path = "./data/2015 MASTER Probate Data.xlsx"
 )
 
 ```
 
 ## New Variables
 
+NOTE: This seciton is excellent. There are some issues with dates and stuff, but nothing alarming. You can tighten things up with some better use of some syntax, but overall I don't see obvious errors. Because it's one long transformation, I would probably combine this into a single pipeline in a single chunk -- you can intersperse comments througout the chunk. In general, you want to avoid overwriting variables, the way master2015 is overwritten over and over again, to avoid confusion about the state of the variable while you're working. Instead, you can use the pipe operator to chain together the transformations. One strategy I use is to add, but comment in/out, a `View()` statement when I want to check the intermediate results. see my dummy chunk: 
+
+```{r}
+# my super-chunk
+raw_data %>%
+  mutate(new_variable1 = var1 + var2) %>% # View()
+  mutate(new_variable2 = new_variable1 + 1) %>% # View()
+  # etc
+  # etc 
+  # etc
+```
+
+:::
 ### Age_Group
 
 ```{r}
-
 master2015 <- master2015 |>
- mutate(Age_Group = case_when(
+  # NOTE: it does unleash it's own hell, but the canonical strategy here would be to use factors. see package forcats
+  mutate(Age_Group = case_when(
     Age_at_Death < 50 ~ "Under 50",
     Age_at_Death >= 50 & Age_at_Death <= 59 ~ "50–59",
     Age_at_Death >= 60 & Age_at_Death <= 69 ~ "60–69",
     Age_at_Death >= 70 & Age_at_Death <= 79 ~ "70–79",
     Age_at_Death >= 80 ~ "80 or Over"
   ))
+  # NOTE: no NAs that i see, but check!
 ```
 
 ### Parental_Status
@@ -92,13 +108,15 @@ master2015 <- master2015 |>
 master2015 <- master2015 |>
   mutate(
     Parental_Status = case_when(
+      # NOTE: this is complex logic. it looks good to me, but you'll need to convince yourself the result is correct
       (No_Children + No_Dec_Child) >= 1 & (No_Step_Child + No_Step_Dec) == 0 ~ "Children Only, No Stepchildren",
       (No_Children + No_Dec_Child) >= 1 & (No_Step_Child + No_Step_Dec) >= 1 ~ "Children & Stepchildren",
       (No_Children + No_Dec_Child) == 0 & (No_Step_Child + No_Step_Dec) >= 1 ~ "Stepchildren Only",
       (No_Children + No_Dec_Child) == 0 & (No_Step_Child + No_Step_Dec) == 0 ~ "No Children or Stepchildren",
-      TRUE ~ NA_character_
+      TRUE ~ NA_character_ # NOTE: not sure about this final condition. i suspect it does work, but maybe specify a default value with the .default argument? or maybe NA get's added automatically if no conditions are met?
     )
   )
+  # NOTE: ther are NAs induce here, likely due to NAs in the input columns
 ```
 
 ### Probate_Estate
@@ -107,6 +125,8 @@ master2015 <- master2015 |>
 
 master2015 <- master2015 |>
   mutate(
+    # NOTE: this says if any of these strings are found in Probate_Status, Probate_Estate is TRUE? 
+    # it's a common standard to suffix boolean variables with e.g., "ind" for "indicator" or "flag", (probate_estate_ind) to make it clear that this is a boolean variable.
     Probate_Estate = grepl("informal|formal|federal", Probate_Status, ignore.case = TRUE)
   )
 ```
@@ -115,6 +135,10 @@ master2015 <- master2015 |>
 
 ```{r}
 master2015 <- master2015 |>
+  # NOTE: I think "Yes"/"No" or "Y"/"N" is ok, but be consistent throughout your dataset. with Probate_Estate above you have values of TRUE/FALSE, which IMO is better. 
+  # NOTE: also for consistency, consider using case_when() instead of if_else?
+  # NOTE: lots of NAs here. is that expected? there are a lot of NAs in the Attorney column. if you want those to evaluate to "No", you'll need to handle that explicitly. 
+  # NOTE: again, "Pro_Se_Ind" would be a helpful name to indicate it's a TRUE/FALSE kinda thing. 
   mutate(Pro_Se = if_else(Attorney == "Pro Se", "Yes", "No"))
 ```
 
@@ -124,6 +148,9 @@ master2015 <- master2015 |>
 
 master2015 <- master2015 |>
   mutate(
+    # NOTE: I don't think these are doing what you think, but I don't think they're causing a problem either. 
+    # the type appears to be date from import, so you don't need to convert them again.
+    # notice the display format remains ymd despite your explicit format of mdy
     DOD = as.Date(DOD, format = "%m/%d/%Y"),
     Will_Date = as.Date(Will_Date, format = "%m/%d/%Y"),
     Will_Age = as.numeric(DOD - Will_Date)
@@ -137,11 +164,12 @@ Length of time between will execution and date of death (each as own variable)
 ```{r}
 
 master2015 <- master2015 |>
+  # NOTE: perfect
   mutate(
     Executed_Within_1_Week  = Will_Age <= 7,
     Executed_Within_1_Month = Will_Age <= 30,
     Executed_Within_1_Year  = Will_Age <= 365,
-    Executed_Within_3_Years = Will_Age <= 1095,
+    Executed_Within_3_Years = Will_Age <= 1095, # NOTE: silly thing, I'd use 365 * 3 here for clarity, and so on
     Executed_Within_5_Years = Will_Age <= 1825,
     Executed_Within_10_years = Will_Age <= 3650,
     Executed_10plus_Years_Before_Death = Will_Age >= 3650
@@ -152,6 +180,7 @@ master2015 <- master2015 |>
 
 ```{r}
 
+# NOTE: i'm sure there's a cleaner way to code this so you don't have to write Will_Source over and over again. like the across() syntax, but without modifying in place. sorry i don't have it at the top of my brain, but then you can say eg: case_when(.x != "" & !is.na(.x) ~ "Attorney/Firm", .x)". 
 master2015 <- master2015 |>
   mutate(Will_Source_Type = case_when(
     Will_Source == "Unclear" ~ "Unclear",
@@ -167,8 +196,8 @@ master2015 <- master2015 |>
 
 master2015 <- master2015 |>
   mutate(
-    DOD = as.Date(DOD, format = "%m/%d/%Y"),
-    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"),
+    DOD = as.Date(DOD, format = "%m/%d/%Y"), # NOTE: you did this already
+    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"), # NOTE: see above comments about date coersion
     Probate_Delay = as.numeric(Filing_Date - DOD)
   )
 ```
@@ -179,8 +208,8 @@ master2015 <- master2015 |>
 
 master2015 <- master2015 |>
   mutate(
-    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"),
-    Closed_Date = as.Date(Closed_Date, format = "%m/%d/%Y"),
+    Filing_Date = as.Date(Filing_Date, format = "%m/%d/%Y"), # NOTE: you did this already
+    Closed_Date = as.Date(Closed_Date, format = "%m/%d/%Y"), # NOTE: see above
     Probate_Length = as.numeric(Closed_Date - Filing_Date)
   )
 ```
@@ -191,8 +220,8 @@ master2015 <- master2015 |>
 
 master2015 <- master2015 |>
   mutate(Property_Loss = if_else(
-    Tax_Sale == "Yes" | Foreclosure == "Yes",
-    "Yes", "No"
+    Tax_Sale == "Yes" | Foreclosure == "Yes", # NOTE: check precendnce rules, or use parentheses
+    "Yes", "No" # NOTE: use TRUE/FALSE? 
   ))
 
 ```
