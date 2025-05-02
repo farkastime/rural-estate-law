@@ -56,7 +56,7 @@ read_and_fix_columns <- function(file_path) {
 # Step 3: Read, merge, and convert numeric columns
 numeric_cols <- c("Age_at_Death", "No_Spouses", "No_Children", "No_Dec_Child", "No_Step_Child", "No_Step_Dec", "No_Grandchild", "No_GreatGC", "2024_Value","HP_1_Value", "HP_2_Value","HP_3_Value","HP_4_Value", "FC_Value")
 
-master2015 <- bind_rows(
+master2015 <- bind_rows( # NOTE: fun fact, "master" is generally avoided these days for DEI reasons
   read_and_fix_columns(Chaves_path),
   read_and_fix_columns(Colfax_path),
   read_and_fix_columns(Cibola_path)
@@ -116,6 +116,7 @@ ALL
   ) |>
    # Will_Timing (categorical variable for age of will)
     mutate(
+    # NOTE: could you create your Will_Timing variable here with a case_when? mutate(will_timing = case_when(Will_AGE <= 7 ~ "Executed Within 1 Week", ...)). This would avoid creating redundant variables you need to pivot later on. 
     Executed_Within_1_Week  = Will_Age <= 7,
     Executed_Within_1_Month = Will_Age <= 30,
     Executed_Within_1_Year  = Will_Age <= 365,
@@ -342,6 +343,7 @@ long_hp <- master2015 |>
 
 group_vars <- c("All") # NOTE: are you planning something more elaborate later? 
 # you could just: long_hp %>% summarize(...)
+# NOTE: nvm i get it now. kind of a neat solution
 
 HP_value_sums <- purrr::map(group_vars, \(var) {
   long_hp |>
@@ -696,6 +698,8 @@ length_sums <- purrr::map(group_vars, \(var) {
 
 # Print the result
 print(length_sums)
+
+# NOTE: You can easily combine Probate Delay and Length by updating to "summarize(across(c(Probate_Delay, Probate_Length), ...))" in the above code, if you like.  
 ```
 
 # Wills
@@ -705,7 +709,7 @@ print(length_sums)
 ## Dataset
 
 ```{r}
-
+#
 master_wills <- master2015 |>
   filter(Will_Status == "Testate", na.rm = TRUE)
 
@@ -721,6 +725,7 @@ writexl::write_xlsx(
 
 ```{r}
 
+# NOTE: did you mean to use master_wills dataset here?
 median_will_age <- median(master_2015_probates$Will_Age, na.rm = TRUE)
 
 print(median_will_age)
@@ -733,12 +738,13 @@ Proportion of wills executed within each time frame (will date known)
 ```{r}
 
 will_timing_distribution <- master_wills |>
-  
   pivot_longer(
     cols = starts_with("Executed_"), 
     names_to = "Will_Timing", 
     values_to = "Included"
-  ) |>
+  ) |> # View()
+  # NOTE: As always, I think this works as intended, but I'll point out you're undoing work you did above at line 117. I'd update that transformation to create a Will_Timing variable directly, instead of this. 
+  # NOTE: or ... is it important because you want to count a will multiple times if it fits multiple categories, like within a week is ALSO within a month and a year etc.  
   filter(Included == TRUE) |>
   group_by(Will_Timing) |>
   drop_na(Will_Date) |>
@@ -749,12 +755,13 @@ will_timing_distribution <- master_wills |>
   ) |>
   arrange(desc(prop_of_total))
 
+  # NOTE: Just to double check, this is counting a will multiple times. Is that what you want? If its executed with a week, it statisfies all the other conditions too, right? The alternative is to create bins, like Executed Within 1 week, executed between 1 week and 1 month, between 1 month and 1 year, etc, which will partition the wills data cleanly so statistics like this are more natural to perform.
+
 will_timing_distribution <- will_timing_distribution |>
+  # NOTE: add this to your pipeline above, somewhere after summarize. 
   mutate(Will_Timing = abbreviate(Will_Timing, minlength = 8))
 
 print(will_timing_distribution)
-
-
 
 ```
 
