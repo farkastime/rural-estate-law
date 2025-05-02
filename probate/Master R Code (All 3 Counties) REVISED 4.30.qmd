@@ -17,6 +17,7 @@ editor: visual
  library(purrr)
  library(forcats)
  library(writexl)
+ library(tidyr)
 ```
 
 # All Decedents
@@ -192,6 +193,29 @@ cat("Number of values used (non-NA):", non_na_count, "\n")
 cat("Number of NA values dropped:", na_count, "\n")
 ```
 
+```{r}
+# NOTE: The issue with median age (i think you mentioned today) is that it's numeric, not categorical. All the other variable are categorical, so the type of analysis you want to do is a little different. If you have other numeric variables, you can do the same thing with them. Here's perhaps a way that's more similar in workflow to the other variables: 
+
+master2015 %>% 
+  summarize(
+    median_age = median(Age_at_Death, na.rm = TRUE),
+    count_non_na = sum(!is.na(Age_at_Death)),
+    count_na = sum(is.na(Age_at_Death))
+  )
+
+# if you had other numeric variables, you could do maybe create a nice table with one row per variable and each would have the same columns. i think like: 
+
+master2015 %>%
+  summarize(across(c(Age_at_Death, No_Spouses, No_Children), 
+    list(median = ~ median(.x, na.rm = TRUE),
+    count_non_na = ~ sum(!is.na(.x)),
+    count_na = ~ sum(is.na(.x)))
+  ))
+
+# ... then pivot longer somehow. moving on ... 
+
+```
+
 # Probate Use
 
 ## Summary
@@ -199,7 +223,7 @@ cat("Number of NA values dropped:", na_count, "\n")
 Share of those with associated probate grouped by: all decedents, age group, sex, marital status, parental status
 
 ```{r}
- group_vars <- c("All","Age_Group", "Sex", "Marital_Status" , "Parental_Status")
+ group_vars <- c("All", "Age_Group", "Sex", "Marital_Status", "Parental_Status")
  probate_sums <- purrr::map(group_vars, \(var) 
   master2015 |>
   drop_na(State_Probate_Ind) |>  # Remove rows with NA in State_Probate_Ind
@@ -262,7 +286,7 @@ print(heirs_prop_probate_summary_2)
 Share of decedents with heirs property who also have at least one heirs property parcel in tax delinquency status (where Tax_Delinquency status is known)
 
 ```{r}
-
+# NOTE: I think i'd add this in to your big transformation pipeline at the beginning.
 master2015 <- master2015 |>
   mutate(Tax_Delinquency = case_when(
     Tax_Status_HP_1 == "Delinquent" |
@@ -275,7 +299,6 @@ master2015 <- master2015 |>
 ```
 
 ```{r}
-
 
 heirs_tax_delinquency_summary <- master2015 |>
   #filter(Heirs_Property %in% c("Yes", "No")) |>
@@ -297,9 +320,11 @@ Summary of value of all heirs' properties identified (minimum, maximum, mean, an
 
 ```{r}
 
-
 # First, pivot longer to combine all HP_#_Value columns into one
 long_hp <- master2015 |>
+  # NOTE: again, maybe add this to the big transformation pipeline. 
+  # also, this is textbook use of across(), which I'd rename at() if i had my way:
+  # mutate(across(HP_1_Value:HP_4_Value, ~ case_when(.x == 0 ~ NA, .x))
    mutate(
      HP_1_Value = ifelse(HP_1_Value == 0, NA, HP_1_Value),
      HP_2_Value = ifelse(HP_2_Value == 0, NA, HP_2_Value),
@@ -307,14 +332,16 @@ long_hp <- master2015 |>
      HP_4_Value = ifelse(HP_4_Value == 0, NA, HP_4_Value)
    ) |>
   pivot_longer(
-    cols = matches("^HP_\\d+_Value$"),
+    cols = matches("^HP_\\d+_Value$"), # NOTE: not an expert on regex, but i think this is right. 
     names_to = "HP_Field",
     values_to = "HP_Value"
   ) |>
   drop_na(HP_Value)  
+  # NOTE: I think this is doing what you want.
 
 
-group_vars <- c("All")
+group_vars <- c("All") # NOTE: are you planning something more elaborate later? 
+# you could just: long_hp %>% summarize(...)
 
 HP_value_sums <- purrr::map(group_vars, \(var) {
   long_hp |>
@@ -330,6 +357,8 @@ HP_value_sums <- purrr::map(group_vars, \(var) {
   set_names(group_vars)
 
 print(HP_value_sums)
+
+# NOTE: I think this is doing what you want. the idea is that you want to make a "Heirs Property" table, more or less ignoring who owns what, so each row is just an item of property. then you want stats on all property, ignoreing ownership, right? so ultimately, the HP_Field column is irrelevant.
 
 ```
 
@@ -362,9 +391,9 @@ print(TS_sums)
 ```{r}
 
 tax_sale_probate_summary_2 <- master2015 |>
-  group_by(Tax_Sale) |>
+  group_by(Tax_Sale) |> # NOTE: could you add this to the chunk at line 225? 
   filter(!is.na(State_Probate_Ind)) |>
-  mutate(Tax_Sale = tolower(Tax_Sale)) |> 
+  mutate(Tax_Sale = tolower(Tax_Sale)) |> # maybe add this transformation to the big transformation pipeline at the beginning
   summarize(
     TS_count_probate_known = n(),
     probate_count = sum(State_Probate_Ind == TRUE, na.rm = TRUE),
@@ -379,7 +408,7 @@ print(tax_sale_probate_summary_2)
 Summary of min, max, mean, median for all identified properties subject to tax sale after death (based on only 8 properties)
 
 ```{r}
-
+# NOTE: can you combine this with Age_at_Death and Value?
 group_vars <- c("All", "Age_Group", "Sex", "Marital_Status", "Parental_Status")
 
 TS_value_sums <- purrr::map(group_vars, \(var) {
@@ -428,7 +457,7 @@ print(FC_sums)
 
 ```{r}
 FC_probate_summary_2 <- master2015 |>
-  group_by(Foreclosure) |>
+  group_by(Foreclosure) |> # NOTE: Can you add Foreclosure to the grouping variable for probate above? 
   drop_na(State_Probate_Ind) |>
   summarize(
     count_FC_probate_known = n(),
@@ -461,6 +490,20 @@ FC_value_sums <- purrr::map(group_vars, \(var) {
 
 print(FC_value_sums)
 ```
+
+NOTE: I ended here for now (may 1). Everything looks totally fine, i don't think there are any critical issues. 
+I do see an opportunity to tighten things up even more. Juice may not be worth the squeeze, but: I see two main types of analysis here. There are proportion analytics for the catagorical variables, and min, max, mean, median for the numeric variables. There might be a way to loop across all your variables of interest, about which you want summaries, determine whether the variable is categorial or numeric, and then apply an appropriate summary function (which you define once for numeric and once for categorical). There will be some cases where you're like "but i don't need the mean for variable 7", and that's ok -- find the superset of transformations that gets you what you need in all cases, and just ignore the superfluous stuff that's produced for variable 7 etc. One hurdle: There is some inconsitency among variables of each type though (mostly categorial, i think), so you'd need to deal with that in the initial transformation pipeline to ensure the functions you write are generalizable across all columns of a given type. High level pseudocode algorithm like: 
+
+1. summarize_categorical <- function(variable)
+2. summarize_numeric <- function(variable)
+3. summarize_variables <- function(variable_list) {
+  if (is_categorical(variable)): summarize_categorical(variable)
+  else: summarize_numeric(variable)
+}
+3. sum_vars <- c("var1", "var2", "var3")
+4. all_the_summaries_you'll_ever_need <- map(sum_vars, summarize_variables) 
+
+It's possible this is too optimistic, and that things like NA handling etc. are too granular to (easily) generalize. But think about it. I'm seeing this 1000 line notebook shrink to like 200 possibly.  
 
 # Probate Estates
 
